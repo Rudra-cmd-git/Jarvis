@@ -4,7 +4,7 @@ A premium, functional Windows personal AI assistant: natural conversation, voice
 
 ## Current state
 
-**Phase 1 Milestone 3 complete.** A real Electron desktop window launches with a secure shell, typed preload bridge, live system telemetry, SQLite persistence, typed settings, `safeStorage`-encrypted provider credentials, explicit permissions, an activity log, and a functional provider configuration UI. AI network adapters, streaming chat, voice, and PC control are intentionally not implemented yet.
+**Phase 1 Milestone 4 complete.** A real Electron desktop window launches with a secure shell, typed preload bridge, live system telemetry, SQLite persistence, typed settings, `safeStorage`-encrypted provider credentials, explicit permissions, an activity log, provider configuration, and a real OpenAI-compatible AI adapter with SSE streaming, cancellation, retry and a Settings diagnostic. Full conversational chat, voice, and PC control are intentionally not implemented yet.
 
 ## Run and verify
 
@@ -36,7 +36,7 @@ Electron 45.4.1 + React 19.3.1 + TypeScript 5.9.3 + Vite 8.3.8, with SQLite (`no
 
 ## Security note
 
-No API keys are stored in this repository. Provider credentials are entered at runtime, encrypted locally with Electron `safeStorage`, and never returned to the renderer. Credential writes require the `credentials.manage` permission. PC control, screen capture, clipboard access, and consequential actions will also require explicit permission and will be logged.
+No API keys are stored in this repository. Provider credentials are entered at runtime, encrypted locally with Electron `safeStorage`, and never returned to the renderer. Credential writes require the `credentials.manage` permission; outbound AI requests require `network.request` and are audited. Keys are loaded only in the main process at request time. PC control, screen capture, clipboard access, and consequential actions will also require explicit permission and will be logged.
 
 ## Reference asset
 

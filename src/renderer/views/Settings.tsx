@@ -5,6 +5,7 @@ import { ErrorState } from '../components/common/ErrorState';
 import { LoadingState } from '../components/common/LoadingState';
 import { PageHeader } from '../components/common/PageHeader';
 import { Panel } from '../components/common/Panel';
+import { AiPanel } from '../components/settings/AiPanel';
 import { AppearancePanel } from '../components/settings/AppearancePanel';
 import { ActivityPanel } from '../components/settings/ActivityPanel';
 import { PermissionsPanel } from '../components/settings/PermissionsPanel';
@@ -69,6 +70,7 @@ export function SettingsView({ onNavigate }: { onNavigate: (view: ViewId) => voi
       </section>
 
       <ProvidersPanel />
+      <AiPanel />
       <PermissionsPanel />
       <ActivityPanel />
 

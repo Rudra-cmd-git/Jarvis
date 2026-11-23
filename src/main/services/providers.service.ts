@@ -213,6 +213,14 @@ export class ProvidersService {
     return this.list();
   }
 
+  get(id: string): ProviderSummary | undefined {
+    if (!PROVIDER_ID_PATTERN.test(id)) {
+      return undefined;
+    }
+    const row = this.getRow(id);
+    return row ? this.toSummary(row, this.settings.get('ai.activeProviderId')) : undefined;
+  }
+
   getRow(id: string): ProviderRow | undefined {
     return this.database.db
       .prepare(

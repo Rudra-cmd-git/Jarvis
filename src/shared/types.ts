@@ -1,6 +1,14 @@
 import type { AppSettings, SettingKey } from './settings';
 import type { PermissionCapability, PermissionOverview } from './permissions';
 import type { ProviderInput, ProviderSummary } from './providers';
+import type {
+  AiCancelResult,
+  AiChatRequest,
+  AiModelListResult,
+  AiStatus,
+  AiStreamEventPayload,
+  AiStreamStartResult,
+} from './ai';
 
 export type ViewId =
   | 'dashboard'
@@ -174,4 +182,10 @@ export interface JarvisApi {
   ): Promise<PermissionOverview>;
 
   listActivity(filter?: ActivityFilter): Promise<ActivityEntry[]>;
+
+  getAiStatus(): Promise<AiStatus>;
+  listAiModels(providerId?: string): Promise<AiModelListResult>;
+  startChatStream(requestId: string, request: AiChatRequest): Promise<AiStreamStartResult>;
+  cancelChatStream(requestId: string): Promise<AiCancelResult>;
+  onChatStreamEvent(listener: (payload: AiStreamEventPayload) => void): () => void;
 }

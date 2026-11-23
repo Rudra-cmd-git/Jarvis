@@ -1,7 +1,9 @@
 const fs = require('node:fs');
+const http = require('node:http');
 const os = require('node:os');
 const path = require('node:path');
 const { app, BrowserWindow, ipcMain } = require('electron');
+const { registerAiIpc } = require('../dist-main/main/ipc/ai.ipc.js');
 const { registerActivityIpc } = require('../dist-main/main/ipc/activity.ipc.js');
 const { registerAppIpc } = require('../dist-main/main/ipc/app.ipc.js');
 const { registerDatabaseIpc } = require('../dist-main/main/ipc/database.ipc.js');
@@ -34,7 +36,10 @@ function check(name, passed, detail) {
   checks.push({ name, passed: Boolean(passed), detail });
 }
 
+let lastScript = '';
+
 async function runJavaScript(window, expression) {
+  lastScript = expression;
   return window.webContents.executeJavaScript(`(() => (${expression}))()`);
 }
 
@@ -81,16 +86,144 @@ function containsPlaintext(filePath) {
   return fs.readFileSync(filePath).toString('latin1').includes(PLAINTEXT_KEY);
 }
 
+// ---------- Milestone 4: local provider stub (no external network) ----------
+
+const STUB_MODELS = [
+  'stub-model-a',
+  'stub-model-b',
+  'retry-model',
+  'denied-model',
+  'slow-model',
+];
+const stubRequests = [];
+const stubState = { retryCount: 0 };
+let stubServer = null;
+
+function sseFrame(payload) {
+  return `data: ${JSON.stringify(payload)}\n\n`;
+}
+
+function writeStream(res, texts, finishReason = 'stop') {
+  res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' });
+  for (const text of texts) {
+    res.write(sseFrame({ choices: [{ delta: { content: text }, finish_reason: null }] }));
+  }
+  res.write(
+    sseFrame({
+      choices: [{ finish_reason: finishReason }],
+      usage: {
+        prompt_tokens: 2,
+        completion_tokens: texts.length,
+        total_tokens: 2 + texts.length,
+      },
+    }),
+  );
+  res.end('data: [DONE]\n\n');
+}
+
+function handleChat(req, res, body) {
+  if (body.model === 'denied-model') {
+    res.writeHead(401, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ error: { message: 'invalid key' } }));
+    return;
+  }
+  if (body.model === 'retry-model') {
+    stubState.retryCount += 1;
+    if (stubState.retryCount === 1) {
+      res.writeHead(503);
+      res.end('temporarily unavailable');
+      return;
+    }
+    writeStream(res, ['recovered']);
+    return;
+  }
+  if (body.model === 'slow-model') {
+    res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' });
+    res.write(sseFrame({ choices: [{ delta: { content: 'slow-' }, finish_reason: null }] }));
+    const interval = setInterval(() => {
+      if (!res.destroyed) {
+        res.write(sseFrame({ choices: [{ delta: { content: 'tick' }, finish_reason: null }] }));
+      }
+    }, 40);
+    const safety = setTimeout(() => {
+      clearInterval(interval);
+      if (!res.destroyed) res.end('data: [DONE]\n\n');
+    }, 10_000);
+    const stop = () => {
+      clearInterval(interval);
+      clearTimeout(safety);
+    };
+    req.on('close', stop);
+    res.on('close', stop);
+    return;
+  }
+  writeStream(res, ['Hello', ' from', ' stub']);
+}
+
+function startStubServer() {
+  return new Promise((resolve, reject) => {
+    const server = http.createServer((req, res) => {
+      const chunks = [];
+      req.on('data', (chunk) => chunks.push(chunk));
+      req.on('end', () => {
+        let body = {};
+        if (chunks.length > 0) {
+          try {
+            body = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+          } catch {
+            body = {};
+          }
+        }
+        stubRequests.push({
+          method: req.method,
+          url: req.url,
+          model: body.model ?? null,
+          authorization: req.headers.authorization ?? null,
+        });
+
+        if (req.method === 'GET' && req.url === '/v1/models') {
+          res.writeHead(200, { 'content-type': 'application/json' });
+          res.end(JSON.stringify({ object: 'list', data: STUB_MODELS.map((id) => ({ id })) }));
+          return;
+        }
+        if (req.method === 'POST' && req.url === '/v1/chat/completions') {
+          handleChat(req, res, body);
+          return;
+        }
+        res.writeHead(404);
+        res.end();
+      });
+    });
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', () => {
+      stubServer = server;
+      resolve();
+    });
+  });
+}
+
+async function stopStubServer() {
+  if (!stubServer) {
+    return;
+  }
+  await new Promise((resolve) => stubServer.close(resolve));
+  stubServer = null;
+}
+
 const EXPECTED_API = [
+  'cancelChatStream',
   'deleteSecret',
+  'getAiStatus',
   'getAppInfo',
   'getDatabaseStatus',
   'getSecretStatus',
   'getSettings',
   'getSystemMetrics',
   'listActivity',
+  'listAiModels',
   'listPermissions',
   'listProviders',
+  'onChatStreamEvent',
   'quitApp',
   'removeProvider',
   'resetSetting',
@@ -99,10 +232,12 @@ const EXPECTED_API = [
   'setPermission',
   'setSecret',
   'setSetting',
+  'startChatStream',
 ].sort();
 
 app.whenReady().then(async () => {
   const errors = [];
+  await startStubServer();
   const coreStatus = initializeCoreServices({
     userDataPath: USER_DATA,
     cipher: new SafeStorageCipher(),
@@ -116,6 +251,7 @@ app.whenReady().then(async () => {
   registerProvidersIpc();
   registerPermissionsIpc();
   registerActivityIpc();
+  registerAiIpc();
 
   const window = new BrowserWindow({
     width: 1280,
@@ -410,6 +546,269 @@ app.whenReady().then(async () => {
       filteredActivity.map((entry) => entry.category),
     );
 
+    // ---------- Milestone 4: AI provider layer (local stub) ----------
+
+    const stubBaseUrl = `http://127.0.0.1:${stubServer.address().port}/v1`;
+    const aiBefore = await runJavaScript(window, 'window.jarvis.getAiStatus()');
+    check(
+      'AI status is honest before network permission',
+      aiBefore.networkPermission === 'unset' && aiBefore.ready === false,
+      { permission: aiBefore.networkPermission, ready: aiBefore.ready },
+    );
+
+    const stubProvider = await runJavaScript(
+      window,
+      `window.jarvis.saveProvider(${JSON.stringify({
+        name: 'Stub Provider',
+        protocol: 'openai-compatible',
+        baseUrl: stubBaseUrl,
+        modelIds: STUB_MODELS,
+        enabled: true,
+        priority: 5,
+      })})`,
+    );
+    check(
+      'stub provider is persisted with the local endpoint',
+      Boolean(stubProvider?.id) && stubProvider.baseUrl === stubBaseUrl,
+      { id: stubProvider?.id, baseUrl: stubProvider?.baseUrl },
+    );
+
+    await runJavaScript(
+      window,
+      `window.jarvis.setSecret('provider:${stubProvider.id}', ${JSON.stringify(PLAINTEXT_KEY)})`,
+    );
+    await runJavaScript(
+      window,
+      `window.jarvis.setActiveProvider(${JSON.stringify(stubProvider.id)})`,
+    );
+    const aiConfigured = await runJavaScript(window, 'window.jarvis.getAiStatus()');
+    check(
+      'AI status resolves the active provider, model and credential',
+      aiConfigured.activeProviderId === stubProvider.id &&
+        aiConfigured.model === 'stub-model-a' &&
+        aiConfigured.credentialState === 'configured',
+      {
+        activeProviderId: aiConfigured.activeProviderId,
+        model: aiConfigured.model,
+        credentialState: aiConfigured.credentialState,
+      },
+    );
+    check(
+      'AI status exposes no credential material',
+      !JSON.stringify(aiConfigured).includes(PLAINTEXT_KEY),
+      'status JSON',
+    );
+
+    const chatRequestsBefore = () =>
+      stubRequests.filter(
+        (entry) => entry.method === 'POST' && entry.url === '/v1/chat/completions',
+      ).length;
+
+    const deniedStream = await runJavaScript(
+      window,
+      "window.jarvis.startChatStream('req-denied-001', {messages:[{role:'user',content:'hello'}]})",
+    );
+    check(
+      'AI streams require explicit network permission',
+      deniedStream.accepted === false &&
+        deniedStream.error?.code === 'permission_denied' &&
+        chatRequestsBefore() === 0,
+      { accepted: deniedStream.accepted, code: deniedStream.error?.code, requests: chatRequestsBefore() },
+    );
+
+    const networkGrant = await runJavaScript(
+      window,
+      "window.jarvis.setPermission('network.request', 'grant')",
+    );
+    check(
+      'network permission can be granted and persisted',
+      networkGrant.permissions.find((entry) => entry.capability === 'network.request')?.state ===
+        'granted',
+      'network.request',
+    );
+
+    await runJavaScript(
+      window,
+      "(() => { window.__aiEvents = []; window.__aiUnsub = window.jarvis.onChatStreamEvent((payload) => window.__aiEvents.push(payload)); return true; })()",
+    );
+
+    const streamStart = await runJavaScript(
+      window,
+      "window.jarvis.startChatStream('req-stream-001', {messages:[{role:'user',content:'hello'}]})",
+    );
+    await waitFor(
+      window,
+      "window.__aiEvents.some((entry) => entry.event.type === 'done')",
+      5000,
+      'AI stream completion',
+    );
+    const streamEvents = await runJavaScript(window, 'window.__aiEvents');
+    const assembled = streamEvents
+      .filter((entry) => entry.event.type === 'delta')
+      .map((entry) => entry.event.text)
+      .join('');
+    const doneEvent = streamEvents[streamEvents.length - 1].event;
+    check(
+      'local stub streams normalized start/delta/done events',
+      streamStart.accepted === true &&
+        streamEvents[0].event.type === 'start' &&
+        assembled === 'Hello from stub' &&
+        doneEvent.type === 'done' &&
+        doneEvent.finishReason === 'stop' &&
+        doneEvent.usage.totalTokens === 5,
+      { types: streamEvents.map((entry) => entry.event.type), assembled, finish: doneEvent.finishReason },
+    );
+
+    const chatRequests = stubRequests.filter(
+      (entry) => entry.method === 'POST' && entry.url === '/v1/chat/completions',
+    );
+    check(
+      'the API key is loaded in main process only',
+      chatRequests.length === 1 &&
+        chatRequests[0].authorization === `Bearer ${PLAINTEXT_KEY}` &&
+        !JSON.stringify(streamEvents).includes(PLAINTEXT_KEY),
+      { requests: chatRequests.length, authorizationPresent: Boolean(chatRequests[0]?.authorization) },
+    );
+
+    const modelList = await runJavaScript(window, 'window.jarvis.listAiModels()');
+    check(
+      'provider health/model listing uses the real adapter',
+      modelList.ok === true && modelList.models.includes('stub-model-a'),
+      { ok: modelList.ok, models: modelList.models },
+    );
+
+    await runJavaScript(window, "window.jarvis.setSetting('ai.defaultModel', 'stub-model-b')");
+    await runJavaScript(window, 'window.__aiEvents = []');
+    await runJavaScript(
+      window,
+      "window.jarvis.startChatStream('req-model-001', {messages:[{role:'user',content:'switch'}]})",
+    );
+    await waitFor(
+      window,
+      "window.__aiEvents.some((entry) => entry.event.type === 'done')",
+      5000,
+      'model switch stream',
+    );
+    const lastChatRequest = stubRequests.filter(
+      (entry) => entry.method === 'POST' && entry.url === '/v1/chat/completions',
+    ).at(-1);
+    check(
+      'switching the default model through settings changes the request',
+      lastChatRequest?.model === 'stub-model-b',
+      { model: lastChatRequest?.model },
+    );
+    await runJavaScript(window, "window.jarvis.setSetting('ai.defaultModel', 'stub-model-a')");
+
+    await runJavaScript(
+      window,
+      `window.jarvis.setActiveProvider(${JSON.stringify(provider.id)})`,
+    );
+    const switchedProvider = await runJavaScript(window, 'window.jarvis.getAiStatus()');
+    check(
+      'switching the active provider works without code changes',
+      switchedProvider.activeProviderId === provider.id && switchedProvider.model === 'verify-model',
+      { activeProviderId: switchedProvider.activeProviderId, model: switchedProvider.model },
+    );
+    await runJavaScript(
+      window,
+      `window.jarvis.setActiveProvider(${JSON.stringify(stubProvider.id)})`,
+    );
+
+    stubState.retryCount = 0;
+    await runJavaScript(window, 'window.__aiEvents = []');
+    await runJavaScript(
+      window,
+      "window.jarvis.startChatStream('req-retry-001', {messages:[{role:'user',content:'retry'}], model:'retry-model'})",
+    );
+    await waitFor(
+      window,
+      "window.__aiEvents.some((entry) => entry.event.type === 'done')",
+      5000,
+      'retry stream',
+    );
+    const retryEvents = await runJavaScript(window, 'window.__aiEvents');
+    const retryText = retryEvents
+      .filter((entry) => entry.event.type === 'delta')
+      .map((entry) => entry.event.text)
+      .join('');
+    check(
+      'retryable HTTP failures are retried before content',
+      stubState.retryCount === 2 && retryText === 'recovered',
+      { attempts: stubState.retryCount, text: retryText },
+    );
+
+    await runJavaScript(window, 'window.__aiEvents = []');
+    await runJavaScript(
+      window,
+      "window.jarvis.startChatStream('req-error-001', {messages:[{role:'user',content:'fail'}], model:'denied-model'})",
+    );
+    await waitFor(
+      window,
+      "window.__aiEvents.some((entry) => entry.event.type === 'error')",
+      5000,
+      'normalized provider error',
+    );
+    const errorEvents = await runJavaScript(window, 'window.__aiEvents');
+    const normalizedError = errorEvents.find((entry) => entry.event.type === 'error').event.error;
+    check(
+      'HTTP failures are normalized and contain no credentials',
+      normalizedError.code === 'http_error' &&
+        normalizedError.retryable === false &&
+        !JSON.stringify(errorEvents).includes(PLAINTEXT_KEY),
+      { code: normalizedError.code, retryable: normalizedError.retryable },
+    );
+
+    await runJavaScript(window, 'window.__aiEvents = []');
+    await runJavaScript(
+      window,
+      "window.jarvis.startChatStream('req-cancel-001', {messages:[{role:'user',content:'slow'}], model:'slow-model'})",
+    );
+    await waitFor(
+      window,
+      "window.__aiEvents.some((entry) => entry.event.type === 'delta')",
+      5000,
+      'slow stream first chunk',
+    );
+    const cancelResult = await runJavaScript(
+      window,
+      "window.jarvis.cancelChatStream('req-cancel-001')",
+    );
+    check('stream cancellation is accepted', cancelResult.cancelled === true, cancelResult);
+    await waitFor(
+      window,
+      "window.__aiEvents.some((entry) => entry.event.type === 'cancelled')",
+      5000,
+      'stream cancellation event',
+    );
+    const deltasBeforeWait = await runJavaScript(
+      window,
+      "window.__aiEvents.filter((entry) => entry.event.type === 'delta').length",
+    );
+    await wait(400);
+    const deltasAfterWait = await runJavaScript(
+      window,
+      "window.__aiEvents.filter((entry) => entry.event.type === 'delta').length",
+    );
+    const cancelEvents = await runJavaScript(window, 'window.__aiEvents');
+    const cancelActivity = await runJavaScript(
+      window,
+      "window.jarvis.listActivity({ query: 'ai.request.cancelled' })",
+    );
+    check(
+      'cancellation stops the stream with one terminal event',
+      cancelEvents.filter((entry) => entry.event.type === 'cancelled').length === 1 &&
+        !cancelEvents.some((entry) => entry.event.type === 'error') &&
+        deltasAfterWait === deltasBeforeWait,
+      { deltasBeforeWait, deltasAfterWait },
+    );
+    check(
+      'cancellation writes a terminal activity entry',
+      cancelActivity.length >= 1,
+      cancelActivity.map((entry) => entry.action),
+    );
+
+    await runJavaScript(window, 'window.__aiUnsub ? window.__aiUnsub() : true');
+
     // ---------- Milestone 3: settings UI ----------
 
     // Reload once more so the renderer context reflects every API mutation
@@ -473,6 +872,78 @@ app.whenReady().then(async () => {
     );
 
     check(
+      'AI panel renders real runtime status',
+      await runJavaScript(
+        window,
+        `document.querySelector('[data-testid="ai-status"]')?.getAttribute('data-ai-ready') === 'true' && document.body.textContent.includes('Stub Provider')`,
+      ),
+      'AI runtime status',
+    );
+
+    await runJavaScript(
+      window,
+      "document.querySelector('[data-action=\"ai-test-connection\"]')?.click()",
+    );
+    await waitFor(
+      window,
+      "document.querySelector('[data-testid=\"ai-models\"]')?.textContent.includes('stub-model-a')",
+      6000,
+      'AI model list in UI',
+    );
+    check('AI test connection performs a real model request through the UI', true, 'models rendered');
+
+    await runJavaScript(
+      window,
+      `(() => {
+        const element = document.querySelector('[aria-label="AI stream test prompt"]');
+        if (!element) return false;
+        const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
+        setter.call(element, 'ui stream');
+        element.dispatchEvent(new Event('input', { bubbles: true }));
+        return true;
+      })()`,
+    );
+    await runJavaScript(
+      window,
+      "document.querySelector('[data-action=\"ai-run-stream\"]')?.click()",
+    );
+    await waitFor(
+      window,
+      "document.querySelector('[data-testid=\"ai-stream-output\"]')?.textContent.includes('Hello from stub')",
+      6000,
+      'UI stream output',
+    );
+    check('AI stream diagnostic renders real streamed output through the UI', true, 'output rendered');
+
+    await runJavaScript(
+      window,
+      `(() => {
+        const element = document.querySelector('[aria-label="Default AI model"]');
+        if (!element) return false;
+        const setter = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, 'value').set;
+        setter.call(element, 'stub-model-b');
+        element.dispatchEvent(new Event('change', { bubbles: true }));
+        return true;
+      })()`,
+    );
+    let uiModelSetting = null;
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      uiModelSetting = await runJavaScript(
+        window,
+        "window.jarvis.getSettings().then((current) => current['ai.defaultModel'])",
+      );
+      if (uiModelSetting === 'stub-model-b') {
+        break;
+      }
+      await wait(100);
+    }
+    check(
+      'default model can be switched through the settings UI',
+      uiModelSetting === 'stub-model-b',
+      uiModelSetting,
+    );
+
+    check(
       'provider card exists before UI removal',
       await runJavaScript(window, `document.querySelector('[data-provider-id=\"${provider.id}\"]') !== null`),
       provider.id,
@@ -527,8 +998,9 @@ app.whenReady().then(async () => {
 
     check('no renderer console errors', errors.length === 0, errors);
   } catch (error) {
-    console.log(`WINDOW_VERIFY_ERROR ${error instanceof Error ? error.message : String(error)} ${JSON.stringify(errors)}`);
+    console.log(`WINDOW_VERIFY_ERROR ${error instanceof Error ? error.stack : String(error)} LAST_SCRIPT ${lastScript} CONSOLE ${JSON.stringify(errors)}`);
     window.destroy();
+    await stopStubServer();
     cleanupUserData();
     app.exit(1);
     return;
@@ -538,6 +1010,7 @@ app.whenReady().then(async () => {
   console.log(`WINDOW_VERIFY ${JSON.stringify({ checks, summary: { total: checks.length, failed: failed.length }, appInfo: null, logs: errors })}`);
 
   window.destroy();
+  await stopStubServer();
   cleanupUserData();
   app.exit(failed.length === 0 ? 0 : 1);
 });

@@ -35,6 +35,7 @@ describe('PermissionsService', () => {
     expect(overview.permissions.every((entry) => entry.state === 'unset')).toBe(true);
     expect(overview.permissions.filter((entry) => entry.available).map((entry) => entry.capability)).toEqual([
       'credentials.manage',
+      'network.request',
     ]);
   });
 

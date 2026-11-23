@@ -1,6 +1,6 @@
 # JARVIS — Architecture
 
-Status: Phase 1 Milestone 2 implemented and verified. Earlier Phase 0 and M1 decisions are preserved; see `PROJECT_STATUS.md` for actual test results.
+Status: Phase 1 Milestone 4 implemented and verified. Earlier Phase 0, M1, M2 and M3 decisions are preserved; see `PROJECT_STATUS.md` for actual test results.
 
 ## 1. Environment and decision context
 
@@ -63,7 +63,8 @@ Measured on 2026-11-22:
 
 ### Shared (`src/shared`)
 - `ipc-channels.ts` — single source of truth for channel names.
-- `types.ts` — domain types (Conversation, Message, ProviderConfig, PermissionRequest, ActivityEntry, etc.).
+- `types.ts` — domain types, `JarvisApi` bridge contract and activity/core types.
+- `ai.ts` — normalized AI chat request/stream events, `AiError`, `AiProvider` contract, limits and request-ID pattern.
 - `contracts.ts` — service interfaces shared conceptually across boundaries (serializable shapes only).
 
 ### Main — IPC (`src/main/ipc`)
@@ -83,11 +84,17 @@ Measured on 2026-11-22:
 - `permissions.service.ts` — capability decisions (`granted` / `denied` / `unset`), enforcement helper and audit logging.
 - `activity-log.service.ts` — append-only audit trail with category/severity/outcome filtering and redaction.
 - `providers.service.ts` — provider CRUD, activation, model normalization and credential-state reporting.
-- `ai/` — provider abstraction described below (M4).
+- `ai/ai-errors.ts` — normalized `{ code, message, retryable, status? }` errors with redaction.
+- `ai/sse.ts` — incremental SSE decoder independent of network reads.
+- `ai/openai-compatible.provider.ts` — `fetch` + SSE adapter for OpenAI-compatible endpoints; also serves Ollama without Authorization.
+- `ai/provider-registry.ts` — adapter lookup keyed by protocol.
+- `ai/model-router.ts` — active provider/model resolution and main-only key loading.
+- `ai/retry.ts` — retry decision, exponential backoff, abortable sleep and timeout-signal linking.
+- `ai/ai.service.ts` — stream lifecycle manager: permission gate, activity audit, retry, cancellation and event emission.
 
 ### Main — IPC guards (`src/main/utils`)
 - `ipc-guard.ts` — trusted renderer origin checks.
-- `validation.ts` — strict record/string/number/enum/array validators used by every M3 handler.
+- `validation.ts` — strict record/string/number/enum/array validators used by every M3 and M4 handler.
 - `redact.ts` — defense-in-depth credential redaction for activity details.
 
 ### Planned later services
@@ -95,43 +102,53 @@ Voice engine (STT/TTS/wake-word), Windows system control, screen capture/OCR, br
 
 ## 4. Data flow
 
-**Chat message flow (planned Phase 1):**
-1. User types in Chat view → renderer store calls `window.jarvis.ai.stream(...)`.
-2. Preload validates channel and forwards invoke.
-3. Main AI router resolves provider/model from settings, loads decrypted key via `SecretsService`, checks permission for network use if required.
-4. Provider adapter yields normalized chunks; main streams chunks back via IPC events.
-5. Renderer appends chunks to the current message; final message and conversation are persisted through `ConversationService`.
-6. Errors are normalized to `{ code, message, retryable }`; no raw keys or stack traces reach renderer.
+**AI streaming flow (implemented in M4; full chat UI arrives in M5):**
+1. Caller invokes `window.jarvis.startChatStream(requestId, request)` through the allowlisted preload bridge.
+2. The main handler validates the sender and every argument, then calls `AiService.startStream`.
+3. `AiService` checks the `network.request` permission, resolves provider/model with `ModelRouter`, loads the decrypted key in the main process only, and logs `ai.request.started`.
+4. `ProviderRegistry` selects the protocol adapter. `OpenAiCompatibleProvider` POSTs SSE to `<baseUrl>/chat/completions` with cancellation via `AbortSignal`.
+5. Normalized `start`, `delta`, `done`, `error` or `cancelled` events are sent only to the originating renderer through `ai:stream-event`; the preload converts them into a subscribable callback with unsubscribe.
+6. A terminal activity entry (`completed`, `failed`, `cancelled`) is always written; retry attempts are logged separately.
+7. Errors are normalized to `{ code, message, retryable }`. No key, request body or raw provider response reaches the renderer or the activity log.
+
+The M5 Chat view will own message composition and conversation persistence; M4 only provides the transport and a minimal Settings diagnostic.
 
 **Privileged action flow (implemented for credential writes):**
 Renderer invokes `secrets:set` → preload forwards to the allowlisted channel → main validates sender and arguments → `PermissionsService.require('credentials.manage')` → `SecretsService` encrypts with `safeStorage` and writes atomically → `ActivityLogService` records the outcome (redacted) → renderer receives only `SecretStorageStatus`, never the key.
 
 The same order applies to future privileged capabilities: validate, check permission, execute through a dedicated service, log, then return a non-secret result.
 
-## 5. Important interfaces (planned)
+## 5. Important interfaces
 
 ```ts
 export interface AiProvider {
-  readonly id: string;
-  readonly displayName: string;
-  listModels(): Promise<ModelInfo[]>;
-  streamChat(request: ChatRequest): AsyncIterable<ChatChunk>;
-  healthCheck(): Promise<ProviderHealth>;
+  readonly protocol: ProviderProtocol;
+  streamChat(
+    config: AiProviderConfig,
+    options: AiProviderStreamOptions,
+  ): AsyncIterable<AiProviderChunk>;
+  listModels(config: AiProviderConfig, signal: AbortSignal): Promise<string[]>;
 }
 
-export interface ChatRequest {
-  model: string;
-  messages: ChatMessage[];
-  signal?: AbortSignal;
+export interface AiChatRequest {
+  messages: AiChatMessage[];
+  model?: string;
   temperature?: number;
   maxTokens?: number;
 }
 
-export interface ChatChunk {
-  type: 'delta' | 'done' | 'error';
-  text?: string;
-  usage?: TokenUsage;
-  error?: NormalizedError;
+export type AiStreamEvent =
+  | { type: 'start'; providerId: string; providerName: string; model: string; startedAt: number }
+  | { type: 'delta'; text: string }
+  | { type: 'done'; finishReason: string | null; usage: AiUsage | null; durationMs: number }
+  | { type: 'error'; error: AiError; durationMs: number }
+  | { type: 'cancelled'; durationMs: number };
+
+export interface AiError {
+  code: AiErrorCode;
+  message: string;
+  retryable: boolean;
+  status?: number;
 }
 
 export type PermissionCapability =
@@ -177,18 +194,19 @@ export interface SecretCipher {
 }
 ```
 
-`AiProvider`, `ChatRequest` and `ChatChunk` above remain planned for M4. M3 deliberately does not implement network calls.
+The AI types above are implemented in `src/shared/ai.ts`. `Conversation` and `Message` persistence types remain planned for M5.
 
-## 6. AI provider integration design
+## 6. AI provider integration design (implemented in M4)
 
 - Provider-independent by construction. `AiProvider` is the only contract the router knows.
-- First adapter: **OpenAI-compatible HTTP adapter** using `fetch` + SSE parsing. It covers OpenAI, OpenRouter, Groq, DeepSeek, Qwen/GLM OpenAI-compatible endpoints, Gemini compatibility endpoints, and local Ollama with an OpenAI-compatible path.
-- Second adapter (planned): native Ollama for model listing/pulling and offline use.
-- Optional later: Anthropic adapter. No provider is ever hardcoded as the only option.
-- `ProviderRegistry` holds adapter factories keyed by `protocol` (`openai-compatible`, `ollama`, …).
-- `ModelRouter` selects a model from user settings plus a task hint (`chat`, `coding`, `reasoning`, `fast`, `vision`). Automatic selection must remain overridable.
-- API keys are supplied at runtime through UI settings and stored encrypted. Built-in free endpoints may be offered as *configurations*, never as embedded credentials.
-- Streaming, cancellation, retries with backoff, and normalized errors belong in adapters/router, not the UI.
+- The **OpenAI-compatible adapter** uses `fetch` + an incremental SSE decoder. It covers OpenAI, OpenRouter, Groq, DeepSeek, Gemini's OpenAI-compatible endpoint, custom compatible servers and local Ollama's `/v1` path.
+- `ProviderRegistry` maps `openai-compatible` and `ollama` protocols to adapters. Ollama deliberately omits Authorization and OpenAI-only request fields.
+- `ModelRouter` resolves the active provider, default model and stored credential. A per-request model override is supported; task-based hints remain an M5+ concern.
+- API keys are read at request time via `SecretsService.getSecretInternal()` in the main process, attached as `Authorization: Bearer …`, and never returned through IPC, events, status payloads or activity entries.
+- `network.request` is now an enforced permission. Every outbound request is gated and audited.
+- Retries (max 3 attempts, 300 ms exponential backoff capped at 2 s) apply only before the first content chunk. Cancellation uses linked `AbortSignal`s and always produces one terminal event and activity entry.
+- A 120 s per-attempt timeout and a 15 s model-list timeout are enforced by `createTimeoutSignal`.
+- Verification uses a local HTTP stub, so no real API key or external network is needed to prove the adapter path.
 
 ## 7. Database structure (schema v1, implemented)
 
@@ -209,7 +227,7 @@ jarvis.db (SQLite, WAL)
     └── index on (conversation_id, created_at)
 ```
 
-`conversations` and `messages` are created in v1 so M4/M5 can persist history without a destructive migration. Memory, automation, task, reminder, app-usage and plugin tables are still planned.
+`conversations` and `messages` are created in v1 so M5 can persist history without a destructive migration. Memory, automation, task, reminder, app-usage and plugin tables are still planned.
 
 Secrets are **not** stored in SQLite: provider keys live in a `safeStorage`-encrypted file (`secrets.bin`) with opaque `provider:<id>` references. The file is written atomically through a temporary file and never contains plaintext. Migrations are append-only, validated as contiguous, applied inside `BEGIN IMMEDIATE`, and recorded in `schema_migrations`; a database newer than the application refuses to open.
 
@@ -218,8 +236,9 @@ Secrets are **not** stored in SQLite: provider keys live in a `safeStorage`-encr
 - BrowserWindow: `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`, `webSecurity: true`.
 - Navigation is locked to local app origin; external links open in the OS browser after confirmation.
 - IPC channel allowlist plus strict per-handler argument validation (`src/main/utils/validation.ts`); unexpected fields and arguments are rejected.
-- Every privileged capability is permission-gated and logged. M3 enforces `credentials.manage`; capabilities that are not implemented are visible but cannot be granted.
+- Every privileged capability is permission-gated and logged. `credentials.manage` and `network.request` are enforced; capabilities that are not implemented are visible but cannot be granted.
 - Provider API keys never cross the preload bridge in the read direction. The renderer can only set/delete a key and read an aggregate status.
+- Stream events are sent only to the renderer that started the request; destroying that renderer aborts its streams. Request/content text and credentials are never logged.
 - Activity details are redacted for `sk-...`, `Bearer ...`, and `api_key=...` patterns and capped in length.
 - Emergency stop cancels active streams, pauses automations, and revokes session grants (Phase 2/4).
 - Screen/microphone indicators are UI-visible whenever capture or listening is active.
@@ -242,6 +261,10 @@ Secrets are **not** stored in SQLite: provider keys live in a `safeStorage`-encr
 | ADR-007 | Bundle preload into a single CJS file with Vite | Sandboxed preloads cannot `require` relative modules; unbundled preload failed with `module not found` | 2026-11-22 |
 | ADR-008 | Vite `base: './'` | Production assets must resolve from `file://` when Electron loads the built HTML | 2026-11-22 |
 | ADR-009 | Pin TypeScript 5.9.3 | Conservative compatibility with Vite 8 / Vitest 5 toolchain | 2026-11-22 |
+| ADR-011 | Main-process `AiService` owns stream lifecycle | Renderer stays presentation-only; cancellation, audit and retries need process-local state | 2026-11-23 |
+| ADR-012 | Event-based streaming with per-request IDs | `ipcRenderer.invoke` is request/response; events carry deltas and terminal states to one sender | 2026-11-23 |
+| ADR-013 | Retry only before first emitted chunk | Re-sending partial assistant output would duplicate visible text | 2026-11-23 |
+| ADR-014 | Local stub server for window verification | Proves real SSE/network behavior without secrets or external services | 2026-11-23 |
 
 ## 10. Risks and mitigations
 

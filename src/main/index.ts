@@ -1,6 +1,7 @@
 import { app, BrowserWindow, session } from 'electron';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { registerAiIpc } from './ipc/ai.ipc';
 import { registerActivityIpc } from './ipc/activity.ipc';
 import { registerAppIpc } from './ipc/app.ipc';
 import { registerDatabaseIpc } from './ipc/database.ipc';
@@ -101,6 +102,7 @@ app.whenReady().then(() => {
   registerProvidersIpc();
   registerPermissionsIpc();
   registerActivityIpc();
+  registerAiIpc();
   createWindow();
 
   app.on('activate', () => {

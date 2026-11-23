@@ -16,6 +16,11 @@ export const IPC_CHANNELS = {
   PERMISSIONS_LIST: 'permissions:list',
   PERMISSIONS_SET: 'permissions:set',
   ACTIVITY_LIST: 'activity:list',
+  AI_GET_STATUS: 'ai:get-status',
+  AI_LIST_MODELS: 'ai:list-models',
+  AI_STREAM_START: 'ai:stream-start',
+  AI_STREAM_CANCEL: 'ai:stream-cancel',
+  AI_STREAM_EVENT: 'ai:stream-event',
 } as const;
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];

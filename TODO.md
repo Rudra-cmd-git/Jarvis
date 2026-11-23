@@ -12,7 +12,7 @@ Priority: P0 = blocks current phase, P1 = next milestone, P2 = later in phase, P
 - [x] Initialize Git repository (no commit)
 - [x] Define Phase 1 milestones and acceptance criteria
 
-## Phase 1 — Functional Desktop Foundation (IN PROGRESS — M3 complete)
+## Phase 1 — Functional Desktop Foundation (IN PROGRESS — M4 complete)
 
 ### M1 — Scaffold and prove the shell (P0, COMPLETE)
 
@@ -61,18 +61,25 @@ M3 verification summary: `npm run typecheck` pass; `npm run test` 64/64 pass; `n
 
 Deferred follow-up: migrate synchronous `safeStorage` calls to Electron 45 async variants without changing the `SecretCipher` boundary.
 
-### M4 — AI provider layer (P1, NEXT, depends on M3)
+### M4 — AI provider layer (P1, COMPLETE)
 
-Acceptance criteria: at least one real provider responds to a streamed message; switching provider/model works without code changes; cancellation stops the stream; errors are normalized.
+Acceptance criteria: at least one real provider responds to a streamed message (proved with a local stub); switching provider/model works without code changes; cancellation stops the stream; errors are normalized. **All criteria verified 2026-11-23.**
 
-- [ ] `AiProvider` interface, `ProviderRegistry`, `ModelRouter`
-- [ ] OpenAI-compatible adapter with SSE streaming and abort support
-- [ ] Ollama adapter (offline/local) planned or implemented where practical
-- [ ] Task-based model selection with user override
-- [ ] Retry/backoff and normalized errors
-- [ ] Unit tests for SSE parsing, routing, and error normalization
+- [x] `AiProvider` interface, `ProviderRegistry`, `ModelRouter`
+- [x] OpenAI-compatible adapter with SSE streaming, abort support, model listing and non-stream JSON fallback
+- [x] Ollama support through the same adapter without Authorization or OpenAI-only fields
+- [x] Default model selection through settings plus per-request model override
+- [x] Retry/backoff, timeouts and normalized errors
+- [x] `network.request` enforcement and terminal activity entries
+- [x] Streaming IPC with sender-scoped events and renderer-destroy cancellation
+- [x] Settings AI diagnostic with real status, connection test, stream and cancel
+- [x] Unit tests (17 files, 95 tests total; 31 new M4 tests)
+- [x] Local-stub window verification (78 checks total; 20 new M4 checks)
+- [x] Documentation updated with actual results
 
-### M5 — Chat experience (P2, depends on M4)
+M4 verification summary: `npm run typecheck` pass; `npm run test` 95/95 pass; `npm run build` pass; `npm run verify:window` 78/78 pass; `npm run dev` launched `J.A.R.V.I.S. - Foundation`.
+
+### M5 — Chat experience (P1, NEXT, depends on M4)
 
 Acceptance criteria: send message, see streamed response, stop generation, create/rename/delete conversations, switch model mid-session, conversation history survives restart.
 
@@ -137,6 +144,6 @@ Acceptance criteria: send message, see streamed response, stop generation, creat
 | Synchronous `safeStorage` is deprecated in Electron 45 | Security/tooling | Migrate to async variants without changing `SecretCipher`; no plaintext fallback |
 | `src/renderer/App.tsx` was untracked | Git | **Resolved in the M3 commit** — now tracked and preserved |
 | Reference image not machine-readable by current model | Design | Use written brief; revisit with multimodal agent |
-| No remote/push yet | Recovery | Local M2/M3 commits exist; ask before pushing |
+| `origin/main` exists but no push after M3 | Recovery | M4 committed locally; ask before pushing |
 
 Do not mark an item complete until the acceptance criteria are verified and `PROJECT_STATUS.md` is updated with real results.

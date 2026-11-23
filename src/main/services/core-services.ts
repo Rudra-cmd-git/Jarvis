@@ -1,5 +1,8 @@
 import path from 'node:path';
 import type { CoreStatus, DatabaseStatus } from '../../shared/types';
+import { AiService } from './ai/ai.service';
+import { ModelRouter } from './ai/model-router';
+import { createDefaultProviderRegistry } from './ai/provider-registry';
 import { ActivityLogService } from './activity-log.service';
 import { DatabaseService } from './database.service';
 import { PermissionsService } from './permissions.service';
@@ -15,6 +18,7 @@ export interface CoreServices {
   permissions: PermissionsService;
   activity: ActivityLogService;
   providers: ProvidersService;
+  ai: AiService;
   getStatus(): CoreStatus;
 }
 
@@ -45,6 +49,12 @@ export function createCoreServices({ userDataPath, cipher }: CreateCoreOptions):
   const settings = new SettingsService(database);
   const permissions = new PermissionsService(database, activity);
   const providers = new ProvidersService(database, settings, secrets, activity);
+  const ai = new AiService({
+    registry: createDefaultProviderRegistry(),
+    router: new ModelRouter(providers, settings, secrets),
+    permissions,
+    activity,
+  });
 
   const getStatus = (): CoreStatus => ({
     database: database.getStatus(),
@@ -74,6 +84,7 @@ export function createCoreServices({ userDataPath, cipher }: CreateCoreOptions):
     permissions,
     activity,
     providers,
+    ai,
     getStatus,
   };
 }
@@ -145,6 +156,9 @@ export function getCoreStatus(): CoreStatus {
 
 export function shutdownCoreServices(): void {
   if (active) {
+    // Abort provider sockets before the database handle disappears; audit
+    // writes are best-effort and never break shutdown.
+    active.ai.shutdown();
     active.database.close();
     lastStatus = {
       ...active.getStatus(),

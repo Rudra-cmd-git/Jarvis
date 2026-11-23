@@ -70,6 +70,23 @@ export function asBoolean(value: unknown, field: string): boolean {
   return value;
 }
 
+export function asNumber(
+  value: unknown,
+  field: string,
+  options: { min?: number; max?: number } = {},
+): number {
+  const { min = Number.NEGATIVE_INFINITY, max = Number.POSITIVE_INFINITY } = options;
+
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    throw new IpcValidationError(`${field} must be a finite number.`);
+  }
+  if (value < min || value > max) {
+    throw new IpcValidationError(`${field} is out of range.`);
+  }
+
+  return value;
+}
+
 export function asInteger(
   value: unknown,
   field: string,

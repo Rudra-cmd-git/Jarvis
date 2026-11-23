@@ -1,5 +1,13 @@
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
 import { IPC_CHANNELS, type IpcChannel } from '../shared/ipc-channels';
+import type {
+  AiCancelResult,
+  AiChatRequest,
+  AiModelListResult,
+  AiStatus,
+  AiStreamEventPayload,
+  AiStreamStartResult,
+} from '../shared/ai';
 import type {
   AppInfo,
   ActivityEntry,
@@ -54,6 +62,32 @@ const api: JarvisApi = {
 
   listActivity: (filter?: ActivityFilter) =>
     invoke<ActivityEntry[]>(IPC_CHANNELS.ACTIVITY_LIST, filter ?? {}),
+
+  getAiStatus: () => invoke<AiStatus>(IPC_CHANNELS.AI_GET_STATUS),
+  listAiModels: (providerId?: string) =>
+    invoke<AiModelListResult>(
+      IPC_CHANNELS.AI_LIST_MODELS,
+      providerId === undefined ? {} : { providerId },
+    ),
+  startChatStream: (requestId: string, request: AiChatRequest) =>
+    invoke<AiStreamStartResult>(IPC_CHANNELS.AI_STREAM_START, { requestId, request }),
+  cancelChatStream: (requestId: string) =>
+    invoke<AiCancelResult>(IPC_CHANNELS.AI_STREAM_CANCEL, { requestId }),
+  onChatStreamEvent: (listener: (payload: AiStreamEventPayload) => void) => {
+    const handler = (_event: IpcRendererEvent, payload: AiStreamEventPayload): void => {
+      if (!payload || typeof payload.requestId !== 'string' || !payload.event) {
+        return;
+      }
+      if (typeof (payload.event as { type?: unknown }).type !== 'string') {
+        return;
+      }
+      listener(payload);
+    };
+    ipcRenderer.on(IPC_CHANNELS.AI_STREAM_EVENT, handler);
+    return () => {
+      ipcRenderer.removeListener(IPC_CHANNELS.AI_STREAM_EVENT, handler);
+    };
+  },
 };
 
 contextBridge.exposeInMainWorld('jarvis', api);

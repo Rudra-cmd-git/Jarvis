@@ -53,10 +53,11 @@ export const PERMISSION_CATALOG: readonly PermissionDescriptor[] = [
   {
     capability: 'network.request',
     label: 'Make outbound network requests',
-    description: 'Allow provider adapters to call configured AI endpoints.',
+    description:
+      'Allow provider adapters to call the AI endpoints you configure. Requests are made only by the main process and are logged.',
     risk: 'medium',
-    available: false,
-    availabilityNote: 'Required in Milestone 4 (AI provider layer).',
+    available: true,
+    availabilityNote: 'Enforced now by the AI provider layer for every outbound request.',
   },
   {
     capability: 'files.read',

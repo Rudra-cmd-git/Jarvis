@@ -1455,9 +1455,50 @@ select.field-input {
   scroll-behavior: auto !important;
 }
 
+/* Milestone 4: AI runtime diagnostic. */
+.ai-model-row {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+
+.ai-model-row .field {
+  flex: 1;
+  min-width: 0;
+}
+
+.ai-prompt {
+  min-height: 84px;
+  resize: vertical;
+  font-family: var(--font-mono, inherit);
+}
+
+.ai-stream-output {
+  min-height: 92px;
+  max-height: 240px;
+  overflow: auto;
+  margin: var(--space-3) 0 0;
+  padding: var(--space-3);
+  border: 1px solid rgba(94, 234, 212, 0.18);
+  border-radius: var(--radius-sm, 8px);
+  background: rgba(3, 8, 18, 0.72);
+  color: var(--text-primary, #d8f6ff);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.82rem;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 @media (max-width: 720px) {
   .provider-form {
     grid-template-columns: 1fr;
+  }
+
+  .ai-model-row {
+    flex-direction: column;
+    align-items: stretch;
   }
 
   .permission-row {
