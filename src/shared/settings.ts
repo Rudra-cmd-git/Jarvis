@@ -3,6 +3,12 @@ import {
   CONTROL_APP_PATH_PATTERN,
   type ControlAppEntry,
 } from './control';
+import {
+  VOICE_KEY_PATTERN,
+  VOICE_LANGUAGE_PATTERN,
+  VOICE_MODES,
+  type VoiceMode,
+} from './voice';
 
 /**
  * Settings are deliberately small and each key has a real effect in the
@@ -14,6 +20,10 @@ export interface AppSettings {
   'ai.activeProviderId': string | null;
   'ai.defaultModel': string;
   'control.appAllowlist': ControlAppEntry[];
+  'voice.mode': VoiceMode;
+  'voice.language': string;
+  'voice.pushToTalkKey': string;
+  'voice.interimResults': boolean;
 }
 
 export type SettingKey = keyof AppSettings;
@@ -24,6 +34,10 @@ export const SETTING_KEYS: readonly SettingKey[] = [
   'ai.activeProviderId',
   'ai.defaultModel',
   'control.appAllowlist',
+  'voice.mode',
+  'voice.language',
+  'voice.pushToTalkKey',
+  'voice.interimResults',
 ] as const;
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -32,6 +46,10 @@ export const DEFAULT_SETTINGS: AppSettings = {
   'ai.activeProviderId': null,
   'ai.defaultModel': '',
   'control.appAllowlist': [],
+  'voice.mode': 'text',
+  'voice.language': 'en-US',
+  'voice.pushToTalkKey': 'Space',
+  'voice.interimResults': true,
 };
 
 const PROVIDER_ID_PATTERN = /^[A-Za-z0-9:_-]{1,120}$/;
@@ -70,6 +88,16 @@ export function isValidSettingValue<K extends SettingKey>(key: K, value: unknown
       return (
         Array.isArray(value) && value.length <= 20 && value.every((entry) => isControlAppEntry(entry))
       );
+    case 'voice.mode':
+      return typeof value === 'string' && (VOICE_MODES as readonly string[]).includes(value);
+    case 'voice.language':
+      return (
+        typeof value === 'string' && value.length <= 35 && VOICE_LANGUAGE_PATTERN.test(value)
+      );
+    case 'voice.pushToTalkKey':
+      return typeof value === 'string' && VOICE_KEY_PATTERN.test(value);
+    case 'voice.interimResults':
+      return typeof value === 'boolean';
     default:
       return false;
   }

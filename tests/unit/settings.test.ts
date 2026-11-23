@@ -56,6 +56,25 @@ describe('SettingsService', () => {
     expect(() => settings.set('ui.unknown' as never, true)).toThrow(SettingsValidationError);
     expect(() => settings.set('ui.reduceMotion', 'yes' as never)).toThrow(SettingsValidationError);
     expect(() => settings.set('ai.defaultModel', 42 as never)).toThrow(SettingsValidationError);
+    expect(() => settings.set('voice.mode', 'audio' as never)).toThrow(SettingsValidationError);
+    expect(() => settings.set('voice.language', 'not a language' as never)).toThrow(
+      SettingsValidationError,
+    );
+    expect(() => settings.set('voice.pushToTalkKey', '' as never)).toThrow(
+      SettingsValidationError,
+    );
+    expect(() => settings.set('voice.interimResults', 'yes' as never)).toThrow(
+      SettingsValidationError,
+    );
+  });
+
+  it('persists voice settings with real defaults', () => {
+    expect(settings.get('voice.mode')).toBe('text');
+    expect(settings.get('voice.language')).toBe('en-US');
+    settings.set('voice.language', 'hi-IN');
+    settings.set('voice.interimResults', false);
+    expect(settings.get('voice.language')).toBe('hi-IN');
+    expect(settings.get('voice.interimResults')).toBe(false);
   });
 
   it('resets a single key and all keys', () => {

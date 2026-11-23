@@ -10,6 +10,7 @@ import { StatusPill } from '../components/common/StatusPill';
 import { MarkdownMessage } from '../components/chat/MarkdownMessage';
 import { useCore } from '../state/core-context';
 import { useRuntime } from '../state/runtime-context';
+import { useVoice } from '../state/voice-context';
 import { formatDateTime } from '../../shared/format';
 import type { ViewId } from '../../shared/types';
 
@@ -53,6 +54,24 @@ export function ChatView({ onNavigate }: { onNavigate: (view: ViewId) => void })
     updateSetting,
   } = useCore();
 
+  const {
+    adapterAvailable,
+    adapterRequiresNetwork,
+    permission: voicePermission,
+    listening,
+    processing,
+    preview: voicePreview,
+    pendingTranscript,
+    error: voiceError,
+    pushToTalkKey,
+    grantPermission: grantVoicePermission,
+    start: startVoice,
+    stop: stopVoice,
+    cancel: cancelVoice,
+    retry: retryVoice,
+    consumePendingTranscript,
+  } = useVoice();
+
   const [prompt, setPrompt] = useState('');
   const [streaming, setStreaming] = useState(false);
   const [assistantDraft, setAssistantDraft] = useState('');
@@ -76,6 +95,16 @@ export function ChatView({ onNavigate }: { onNavigate: (view: ViewId) => void })
     assistantDraftRef.current = value;
     setAssistantDraft(value);
   }, []);
+
+  useEffect(() => {
+    if (!pendingTranscript) {
+      return;
+    }
+    const text = consumePendingTranscript();
+    if (text) {
+      setPrompt((current) => (current ? `${current.trim()} ${text}`.trim() : text));
+    }
+  }, [pendingTranscript, consumePendingTranscript]);
 
   const finalizeAssistant = useCallback(
     async (status: 'complete' | 'cancelled' | 'error', metadata: Record<string, unknown>) => {
@@ -306,6 +335,37 @@ export function ChatView({ onNavigate }: { onNavigate: (view: ViewId) => void })
     [handleSend],
   );
 
+  useEffect(() => {
+    const isEditable = (target: EventTarget | null): boolean =>
+      target instanceof HTMLElement &&
+      ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName);
+    const matches = (event: KeyboardEvent): boolean =>
+      event.code.toLowerCase() === pushToTalkKey.toLowerCase() ||
+      event.key.toLowerCase() === pushToTalkKey.toLowerCase();
+
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (isEditable(event.target) || !matches(event) || listening) {
+        return;
+      }
+      event.preventDefault();
+      void startVoice();
+    };
+    const onKeyUp = (event: KeyboardEvent): void => {
+      if (!matches(event) || !listening) {
+        return;
+      }
+      event.preventDefault();
+      stopVoice();
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
+    };
+  }, [listening, pushToTalkKey, startVoice, stopVoice]);
+
   return (
     <main className="view" data-view="chat">
       <PageHeader
@@ -463,6 +523,62 @@ export function ChatView({ onNavigate }: { onNavigate: (view: ViewId) => void })
           {streamError && <p className="settings-note settings-note--danger">{streamError}</p>}
           {terminal && <p className="settings-note">{terminal}</p>}
 
+          {(voicePermission !== 'granted' || !adapterAvailable) && (
+            <div className="voice-status" data-testid="voice-status">
+              <span>
+                {!adapterAvailable
+                  ? 'Speech recognition is unavailable in this browser.'
+                  : 'Microphone permission is required for voice input.'}
+              </span>
+              {adapterAvailable && voicePermission !== 'granted' && (
+                <Button
+                  variant="primary"
+                  onClick={() => void grantVoicePermission()}
+                  data-action="grant-microphone"
+                >
+                  Grant microphone
+                </Button>
+              )}
+            </div>
+          )}
+
+          {(listening || processing || voicePreview || voiceError) && (
+            <div className="voice-preview" data-testid="voice-preview">
+              <StatusPill tone={voiceError ? 'danger' : listening ? 'warn' : 'good'}>
+                {voiceError ? 'ERROR' : listening ? 'LISTENING' : processing ? 'TRANSCRIBING' : 'READY'}
+              </StatusPill>
+              <span className="voice-preview-text">{voicePreview || 'Speak now…'}</span>
+              {voiceError && (
+                <span className="settings-note settings-note--danger" data-testid="voice-error">
+                  {voiceError.message}
+                </span>
+              )}
+              <div className="voice-preview-actions">
+                <Button disabled={!listening} onClick={() => stopVoice()} data-action="voice-stop">
+                  Stop
+                </Button>
+                <Button
+                  variant="danger"
+                  disabled={!listening && !processing}
+                  onClick={() => cancelVoice()}
+                  data-action="voice-cancel"
+                >
+                  Cancel
+                </Button>
+                {voiceError?.retryable && (
+                  <Button onClick={() => void retryVoice()} data-action="voice-retry">
+                    Retry
+                  </Button>
+                )}
+              </div>
+              {adapterRequiresNetwork && (
+                <span className="settings-note">
+                  Chromium Web Speech may send audio to an external recognition service.
+                </span>
+              )}
+            </div>
+          )}
+
           <div className="chat-composer">
             <textarea
               className="field-input chat-prompt"
@@ -475,6 +591,32 @@ export function ChatView({ onNavigate }: { onNavigate: (view: ViewId) => void })
               disabled={streaming || !activeConversationId}
             />
             <div className="chat-composer-actions">
+              <button
+                type="button"
+                className={`voice-mic${listening ? ' voice-mic--active' : ''}`}
+                aria-label="Hold to talk"
+                data-action="voice-mic"
+                disabled={!adapterAvailable || voicePermission !== 'granted' || streaming}
+                onPointerDown={(event) => {
+                  event.preventDefault();
+                  void startVoice();
+                }}
+                onPointerUp={() => stopVoice()}
+                onPointerLeave={() => {
+                  if (listening) {
+                    stopVoice();
+                  }
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === ' ' || event.key === 'Enter') {
+                    event.preventDefault();
+                    void startVoice();
+                  }
+                }}
+                onKeyUp={() => stopVoice()}
+              >
+                MIC
+              </button>
               {streaming ? (
                 <Button variant="danger" onClick={() => void handleStop()} data-action="stop-generation">
                   Stop

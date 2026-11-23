@@ -15,6 +15,7 @@ const { registerProvidersIpc } = require('../dist-main/main/ipc/providers.ipc.js
 const { registerSecretsIpc } = require('../dist-main/main/ipc/secrets.ipc.js');
 const { registerSettingsIpc } = require('../dist-main/main/ipc/settings.ipc.js');
 const { registerSystemIpc } = require('../dist-main/main/ipc/system.ipc.js');
+const { registerVoiceIpc } = require('../dist-main/main/ipc/voice.ipc.js');
 const {
   getCoreServices,
   initializeCoreServices,
@@ -224,6 +225,7 @@ const EXPECTED_API = [
   'deleteConversation',
   'deleteSecret',
   'emergencyStop',
+  'endVoiceSession',
   'getAiStatus',
   'getAppInfo',
   'getControlStatus',
@@ -232,6 +234,7 @@ const EXPECTED_API = [
   'getSecretStatus',
   'getSettings',
   'getSystemMetrics',
+  'getVoiceStatus',
   'listActivity',
   'launchControlApp',
   'listAiModels',
@@ -255,6 +258,7 @@ const EXPECTED_API = [
   'setSecret',
   'setSetting',
   'startChatStream',
+  'startVoiceSession',
 ].sort();
 
 app.whenReady().then(async () => {
@@ -277,6 +281,7 @@ app.whenReady().then(async () => {
   registerAiIpc();
   registerConversationsIpc();
   registerControlIpc();
+  registerVoiceIpc();
 
   const window = new BrowserWindow({
     width: 1280,
@@ -377,7 +382,11 @@ app.whenReady().then(async () => {
       defaults['ui.reduceMotion'] === false &&
         defaults['ui.compactSidebar'] === false &&
         defaults['ai.activeProviderId'] === null &&
-        defaults['ai.defaultModel'] === '',
+        defaults['ai.defaultModel'] === '' &&
+        defaults['voice.mode'] === 'text' &&
+        defaults['voice.language'] === 'en-US' &&
+        defaults['voice.pushToTalkKey'] === 'Space' &&
+        defaults['voice.interimResults'] === true,
       defaults,
     );
 
@@ -1037,6 +1046,68 @@ app.whenReady().then(async () => {
     check('paused control blocks privileged actions', blockedAfterStop.ok === false, blockedAfterStop);
     await runJavaScript(window, 'window.jarvis.resumeControl()');
 
+    // ---------- Phase 2 M2: voice input sessions ----------
+
+    const speechApiAvailable = await runJavaScript(
+      window,
+      "typeof window.SpeechRecognition !== 'undefined' || typeof window.webkitSpeechRecognition !== 'undefined'",
+    );
+    check(
+      'Web Speech API availability is reported honestly',
+      typeof speechApiAvailable === 'boolean',
+      { available: speechApiAvailable },
+    );
+
+    const voiceDenied = await runJavaScript(
+      window,
+      "window.jarvis.startVoiceSession('voice-session-denied', 'web-speech', 'en-US')",
+    );
+    check(
+      'voice sessions require microphone permission',
+      voiceDenied.accepted === false && voiceDenied.error?.code === 'permission_denied',
+      { accepted: voiceDenied.accepted, code: voiceDenied.error?.code },
+    );
+
+    await runJavaScript(window, "window.jarvis.setPermission('microphone.record', 'grant')");
+    const voiceStarted = await runJavaScript(
+      window,
+      "window.jarvis.startVoiceSession('voice-session-0001', 'web-speech', 'en-US')",
+    );
+    const voiceStatusActive = await runJavaScript(window, 'window.jarvis.getVoiceStatus()');
+    check(
+      'voice session starts after explicit permission',
+      voiceStarted.accepted === true && voiceStatusActive.activeSessions === 1,
+      { accepted: voiceStarted.accepted, sessions: voiceStatusActive.activeSessions },
+    );
+
+    const invalidVoice = await tryApi(
+      window,
+      "window.jarvis.startVoiceSession('short', 'web-speech', 'en-US')",
+    );
+    check('invalid voice session ids are rejected', invalidVoice.ok === false, invalidVoice);
+
+    const voiceEnded = await runJavaScript(
+      window,
+      "window.jarvis.endVoiceSession('voice-session-0001', 'completed', 12)",
+    );
+    const voiceStatusIdle = await runJavaScript(window, 'window.jarvis.getVoiceStatus()');
+    check(
+      'voice session ends with a duration and no active session',
+      voiceEnded.ended === true && voiceStatusIdle.activeSessions === 0,
+      { ended: voiceEnded.ended, sessions: voiceStatusIdle.activeSessions },
+    );
+
+    const voiceActivity = await runJavaScript(
+      window,
+      "window.jarvis.listActivity({ query: 'voice.session' })",
+    );
+    check(
+      'voice activity records sessions without transcript text',
+      voiceActivity.length >= 2 &&
+        !JSON.stringify(voiceActivity).includes('hello transcript'),
+      voiceActivity.map((entry) => entry.action),
+    );
+
     await runJavaScript(window, 'window.__aiUnsub ? window.__aiUnsub() : true');
 
     // ---------- Milestone 3: settings UI ----------
@@ -1113,6 +1184,15 @@ app.whenReady().then(async () => {
     );
     await runJavaScript(window, "document.querySelector('[data-view=\"settings\"]').click()");
     await waitFor(window, "document.querySelector('[data-view-heading=\"settings\"]') !== null", 5000, 'settings return from pc control');
+
+    check(
+      'voice settings disclose the external recognition service',
+      await runJavaScript(
+        window,
+        "document.body.textContent.includes('Chromium Web Speech') && document.body.textContent.includes('external recognition service') && document.querySelector('[aria-label=\"Speech recognition language\"]') !== null",
+      ),
+      'voice settings disclosure',
+    );
 
     check(
       'AI panel renders real runtime status',
@@ -1208,6 +1288,14 @@ app.whenReady().then(async () => {
       'chat streamed response',
     );
     check('chat view streams a real response through the UI', true, 'Hello from stub');
+    check(
+      'chat composer exposes a push-to-talk control',
+      await runJavaScript(
+        window,
+        "document.querySelector('[data-action=\"voice-mic\"]') !== null",
+      ),
+      'voice mic button',
+    );
 
     await runJavaScript(window, "document.querySelector('[data-view=\"settings\"]').click()");
     await waitFor(window, "document.querySelector('[data-view-heading=\"settings\"]') !== null", 5000, 'settings view return');

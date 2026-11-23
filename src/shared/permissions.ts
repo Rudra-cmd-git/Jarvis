@@ -112,10 +112,12 @@ export const PERMISSION_CATALOG: readonly PermissionDescriptor[] = [
   {
     capability: 'microphone.record',
     label: 'Use the microphone',
-    description: 'Allow voice input and wake-word listening.',
+    description:
+      'Allow explicit push-to-talk voice input. The microphone is active only while you hold the control, and a visible indicator is shown.',
     risk: 'high',
-    available: false,
-    availabilityNote: 'Planned for Phase 2 with a visible indicator.',
+    available: true,
+    availabilityNote:
+      'Enforced now by the voice session service. Wake-word listening remains unimplemented.',
   },
   {
     capability: 'clipboard.read',

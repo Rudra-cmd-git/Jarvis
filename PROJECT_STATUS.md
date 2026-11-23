@@ -1,67 +1,65 @@
 # JARVIS — Project Status
 
-Last updated: 2026-11-23 (Phase 2 Milestone 1 complete)
+Last updated: 2026-11-23 (Phase 2 Milestone 2 complete)
 
 ## 1. Overall progress
 
 | Phase | Name | Status | Notes |
 | --- | --- | --- | --- |
 | 0 | Discovery & Architecture | **Complete** | Environment inspected, stack selected, docs and folder skeleton created |
-| 1 | Functional Desktop Foundation | **Complete — M1–M5 done** | Shell, telemetry, SQLite, secrets, permissions, activity log, AI provider layer and persistent chat |
-| 2 | Voice & PC Control | **In progress — M1 complete** | Allowlisted, permission-gated Windows control with emergency stop and audit |
+| 1 | Functional Desktop Foundation | **Complete — M1–M5 done** | Shell, telemetry, SQLite, secrets, permissions, activity log, AI streaming and persistent chat |
+| 2 | Voice & PC Control | **In progress — M1 and M2 complete** | Allowlisted PC control plus permission-gated push-to-talk voice input |
 | 3 | Intelligence | Not started | Depends on Phase 1/2 |
 | 4 | Automation | Not started | Depends on Phase 1 services |
 | 5 | Personal Assistant | Not started | Depends on storage/AI foundation |
 | 6 | Optimization & Release | Not started | Packaging and hardening |
 
-Current: **Phase 2 Milestone 1 complete. Phase 2 Milestone 2 (voice input / push-to-talk) is next.**
+Current: **Phase 2 Milestone 2 complete. Phase 2 Milestone 3 (text-to-speech and voice conversation) is next.**
 
 ## 2. Completed functionality
 
-### Phase 0 and Phase 1 (preserved)
-- Secure Electron shell, typed preload bridge, live system telemetry, eight navigation views.
-- SQLite persistence with versioned migrations, settings, encrypted secrets, permissions and activity log.
-- Provider CRUD, AI streaming adapter, retry/cancellation, and persistent streaming chat with Markdown rendering.
+### Phase 0, Phase 1 and P2-M1 (preserved)
+- Secure Electron shell, typed preload bridge, live telemetry, eight views, SQLite, encrypted secrets, permissions and activity log.
+- Provider CRUD, AI streaming, persistent conversations and Markdown chat.
+- Allowlisted application launch, clipboard read, screenshot capture, own-window actions, emergency stop and control audit.
 
-### Phase 2 Milestone 1 (new)
-- **Enforced permissions** for `app.launch`, `screen.capture` and `clipboard.read`; unimplemented capabilities remain locked.
-- **`ControlService`** with an injected `ControlPlatform` boundary; Electron APIs isolated in `electron-control-platform.ts`.
-- **Application allowlist** for absolute Windows executable paths; real app launch verified with Notepad.
-- **Clipboard read** with length-only audit entries; contents are never logged.
-- **Screenshot capture** via `desktopCapturer` to a local screenshots folder with a visible indicator.
-- **Own-window actions** (minimize/maximize/restore/focus) for the JARVIS window only.
-- **Emergency stop** aborts AI streams, pauses all control actions, and requires explicit resume.
-- **PC Control view** with real permission grants, allowlist management, safe actions and honest status.
-- **Activity category `control`** for all privileged control actions.
-- 7 new unit tests and 11 new window-verification checks, including a real application launch.
+### Phase 2 Milestone 2 (new)
+- **Enforced `microphone.record`** permission; voice sessions are rejected in main without it.
+- **Replaceable `SpeechRecognitionAdapter`** contract with a Chromium Web Speech implementation. The external-service disclosure is shown in Settings and chat.
+- **Push-to-talk** via microphone button or configurable keyboard key, with start/stop, cancel, retry, timeout and error states.
+- **Visible indicators** in Chat and the status bar while listening or transcribing.
+- **Automatic stop** on release, blur, window hide, cancel and error. No background listening.
+- **Four voice settings** with real effects: mode, language, push-to-talk key and interim results.
+- **Chat integration**: finalized transcripts are inserted into the composer; nothing is auto-sent.
+- **Transcript-free audit** of voice session start/end outcomes.
+- 12 new unit tests and 8 new window-verification checks.
 
 ## 3. Incomplete / not implemented
 
-- Phase 2 M2: microphone input, STT adapter, push-to-talk and language settings.
-- Phase 2 M3: TTS, voice selection, interruption and voice/text mode switching.
+- Phase 2 M3: text-to-speech, voice selection, interruptible playback and voice/text conversation mode.
 - Phase 2 M4: wake-word with explicit opt-in.
 - Volume control, arbitrary external-window management, file operations and screen awareness remain unimplemented and are not presented as available.
-- Phases 3–6 remain out of scope for now.
+- Real microphone capture was not automatically verified; it requires explicit user permission and a physical input device.
 
 ## 4. Features currently working
 
-- Phase 1 chat, persistence, AI streaming and all M1–M4 functionality remain verified.
-- Allowlisted applications can be added, removed and launched; relative paths are rejected.
-- Clipboard text can be read after explicit permission; screenshots are saved locally after permission.
-- Emergency stop cancels active AI streams and blocks further control actions until resumed.
-- PC Control view renders real status and every control performs an actual operation.
+- All Phase 1 and P2-M1 functionality remains verified.
+- Voice permission can be granted from Settings or Chat; the session gate works in main.
+- Web Speech adapter availability is detected and reported honestly.
+- Chat composer exposes a push-to-talk control and receives finalized transcripts without auto-sending.
+- Voice settings persist and affect the adapter immediately.
 - Typecheck, unit tests, production build, window verification and real dev launch all pass.
 
 ## 5. Known issues and blockers
 
 | Issue | Severity | Status |
 | --- | --- | --- |
+| Chromium Web Speech may send audio externally | Medium | Disclosed in UI/docs; adapter interface permits a local engine later |
+| Real microphone input cannot be verified headlessly | Medium | Requires explicit user testing; automated tests use mocks |
 | MSVC linker missing → Tauri/Rust unusable | Medium | Accepted; Electron selected |
 | Electron 45 deprecates synchronous `safeStorage` | Low | Accepted; async migration recorded as follow-up |
-| Chromium Web Speech (planned M2) is cloud-backed | Medium | Must be disclosed in UI; adapter interface allows a local engine later |
-| Volume control and external window APIs unavailable without native modules | Medium | Deferred; no native dependency added without approval |
 | No linter configured | Low | Deferred before Phase 2 completion |
-| No push yet | Low | P2-M1 committed locally; ask before pushing |
+| No push yet | Low | P2-M2 committed locally; ask before pushing |
 
 No source-code bugs are currently known.
 
@@ -70,24 +68,24 @@ No source-code bugs are currently known.
 | Test | Command | Actual result |
 | --- | --- | --- |
 | Typecheck | `npm run typecheck` | Pass — main, renderer and test configs, zero errors |
-| Unit tests | `npm run test` | Pass — 19 files, **106 tests**, 0 failed |
+| Unit tests | `npm run test` | Pass — 21 files, **118 tests**, 0 failed |
 | Production build | `npm run build` | Pass — main, bundled preload, renderer |
-| Automated window verification | `npm run verify:window` | Pass — **95 checks**, 0 failed |
+| Automated window verification | `npm run verify:window` | Pass — **103 checks**, 0 failed |
 | Real dev window launch | `npm run dev` | Pass — window title `J.A.R.V.I.S. - Foundation` |
 
-P2-M1 unit tests cover allowlist validation, permission gates, clipboard truncation and non-disclosure, window action delegation, and emergency stop/resume. Window verification additionally proved real clipboard read, real screenshot capture, real Notepad launch/cleanup, path validation rejection, emergency-stop stream cancellation and pause enforcement.
+P2-M2 unit tests cover unsupported browsers, recognition result ordering, network/microphone error normalization, cancellation, timeout, stop behavior, voice permission gating, session tracking and transcript-free auditing. Window verification covers voice settings defaults, permission denial, session start/end, invalid IDs, audit entries, settings disclosure and the chat push-to-talk control.
 
 ## 7. Current application state
 
 - Runnable: **Yes** (`npm run dev`)
 - Database: schema v2
-- Secrets: `userData/secrets.bin`, encrypted by Electron `safeStorage`
+- Secrets: encrypted in `userData/secrets.bin`
 - AI chat: functional with persistent conversations
 - PC control: allowlisted launch, clipboard read, screenshot and own-window actions
-- Voice / wake-word / automation: **not implemented**
-- Git: M5 commit `e2a3404` and the latest P2-M1 commit exist locally; `origin/main` still points to M3; no push
+- Voice input: push-to-talk enabled; TTS/wake-word not implemented
+- Git: P2-M1 commit `0f61785` and the latest P2-M2 commit exist locally; `origin/main` still points to M3; no push
 - Local tooling state `.opencode/` is untracked and must not be committed
 
 ## 8. Next action
 
-Begin Phase 2 Milestone 2 from `HANDOFF.md`: modular speech-to-text with push-to-talk, explicit microphone permission and visible indicator.
+Begin Phase 2 Milestone 3 from `HANDOFF.md`: text-to-speech with voice selection, interruptible playback and voice/text conversation mode.

@@ -27,6 +27,11 @@ import type {
   ControlStatus,
   ControlWindowResult,
 } from '../shared/control';
+import type {
+  VoiceSessionEndResult,
+  VoiceSessionStartResult,
+  VoiceStatus,
+} from '../shared/voice';
 import type { AppSettings, SettingKey } from '../shared/settings';
 import type { PermissionCapability, PermissionOverview } from '../shared/permissions';
 import type { ProviderInput, ProviderSummary } from '../shared/providers';
@@ -123,6 +128,24 @@ const api: JarvisApi = {
       ipcRenderer.removeListener(IPC_CHANNELS.CONTROL_EVENT, handler);
     };
   },
+
+  getVoiceStatus: () => invoke<VoiceStatus>(IPC_CHANNELS.VOICE_GET_STATUS),
+  startVoiceSession: (sessionId: string, adapterId: string, language: string) =>
+    invoke<VoiceSessionStartResult>(IPC_CHANNELS.VOICE_SESSION_START, {
+      sessionId,
+      adapterId,
+      language,
+    }),
+  endVoiceSession: (
+    sessionId: string,
+    outcome: 'completed' | 'cancelled' | 'failed',
+    characterCount: number,
+  ) =>
+    invoke<VoiceSessionEndResult>(IPC_CHANNELS.VOICE_SESSION_END, {
+      sessionId,
+      outcome,
+      characterCount,
+    }),
 
   getAiStatus: () => invoke<AiStatus>(IPC_CHANNELS.AI_GET_STATUS),
   listAiModels: (providerId?: string) =>

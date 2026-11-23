@@ -98,7 +98,7 @@ Acceptance criteria: send message, see streamed response, stop generation, creat
 
 M5 verification summary: `npm run typecheck` pass; `npm run test` 99/99 pass; `npm run build` pass; `npm run verify:window` 84/84 pass; `npm run dev` launched `J.A.R.V.I.S. - Foundation`.
 
-## Phase 2 — Voice and PC Control (IN PROGRESS — M1 complete)
+## Phase 2 — Voice and PC Control (IN PROGRESS — M1 and M2 complete)
 
 ### P2-M1 — Secure PC-control foundation (P1, COMPLETE)
 
@@ -119,22 +119,31 @@ Acceptance criteria: privileged actions are permission-gated, allowlisted, audit
 
 P2-M1 verification summary: `npm run typecheck` pass; `npm run test` 106/106 pass; `npm run build` pass; `npm run verify:window` 95/95 pass; `npm run dev` launched `J.A.R.V.I.S. - Foundation`.
 
-### P2-M2 — Voice input / push-to-talk (P1, NEXT)
+### P2-M2 — Voice input / push-to-talk (P1, COMPLETE)
 
-- [ ] Enforce `microphone.record` with explicit opt-in
-- [ ] Provider-independent `SpeechToTextAdapter` interface
-- [ ] Web Speech API adapter with push-to-talk and configurable language
-- [ ] Voice settings with real effects and cloud-backend disclosure
-- [ ] Visible LISTENING indicator and auto-stop on blur
-- [ ] Transcript inserted into the Chat composer without auto-send
-- [ ] Unit tests with mocked recognition events and non-mic window checks
+Acceptance criteria: explicit permission-gated microphone start, push-to-talk, transcript into composer without auto-send, visible indicator, cancellation/error handling. **All criteria verified 2026-11-23 (except physical microphone capture, which requires user testing).**
 
-### P2-M3 — Voice output and conversation management (P2)
+- [x] Enforce `microphone.record` with explicit opt-in
+- [x] Provider-independent `SpeechRecognitionAdapter` interface
+- [x] Web Speech API adapter with push-to-talk, timeout and configurable language
+- [x] Voice settings with real effects and external-service disclosure
+- [x] Visible LISTENING indicator and auto-stop on blur/release/cancel
+- [x] Transcript inserted into the Chat composer without auto-send
+- [x] Voice session audit without transcript text
+- [x] Unit tests with mocked recognition events (21 files, 118 tests total; 12 new)
+- [x] Window verification (103 checks total; 8 new)
+- [x] Documentation updated with actual results
 
-- [ ] Text-to-speech adapter with OS voice selection
+P2-M2 verification summary: `npm run typecheck` pass; `npm run test` 118/118 pass; `npm run build` pass; `npm run verify:window` 103/103 pass; `npm run dev` launched `J.A.R.V.I.S. - Foundation`. Real microphone capture was not automated.
+
+### P2-M3 — Voice output and conversation management (P1, NEXT)
+
+- [ ] Provider-independent `TextToSpeechAdapter` interface
+- [ ] OS-voice adapter using `speechSynthesis` with voice selection
 - [ ] Interruptible playback and speaking indicator
 - [ ] Voice/text mode switching
 - [ ] Stop generation also stops speech
+- [ ] Unit tests with mocked synthesis events
 
 ### P2-M4 — Wake-word (P2)
 
@@ -186,6 +195,6 @@ Deferred from Phase 2 scope (require native APIs or later phases): volume contro
 | Synchronous `safeStorage` is deprecated in Electron 45 | Security/tooling | Migrate to async variants without changing `SecretCipher`; no plaintext fallback |
 | `src/renderer/App.tsx` was untracked | Git | **Resolved in the M3 commit** — now tracked and preserved |
 | Reference image not machine-readable by current model | Design | Use written brief; revisit with multimodal agent |
-| `origin/main` exists but no push after M3 | Recovery | P2-M1 committed locally; ask before pushing |
+| `origin/main` exists but no push after M3 | Recovery | P2-M1/P2-M2 committed locally; ask before pushing |
 
 Do not mark an item complete until the acceptance criteria are verified and `PROJECT_STATUS.md` is updated with real results.

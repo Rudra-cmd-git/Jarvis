@@ -13,6 +13,7 @@ import { registerProvidersIpc } from './ipc/providers.ipc';
 import { registerSecretsIpc } from './ipc/secrets.ipc';
 import { registerSettingsIpc } from './ipc/settings.ipc';
 import { registerSystemIpc } from './ipc/system.ipc';
+import { registerVoiceIpc } from './ipc/voice.ipc';
 import { initializeCoreServices, shutdownCoreServices } from './services/core-services';
 import { SafeStorageCipher } from './services/safe-storage-cipher';
 
@@ -109,6 +110,7 @@ app.whenReady().then(() => {
   registerAiIpc();
   registerConversationsIpc();
   registerControlIpc();
+  registerVoiceIpc();
   createWindow();
 
   app.on('activate', () => {

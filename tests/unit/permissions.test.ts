@@ -38,6 +38,7 @@ describe('PermissionsService', () => {
       'network.request',
       'app.launch',
       'screen.capture',
+      'microphone.record',
       'clipboard.read',
     ]);
   });

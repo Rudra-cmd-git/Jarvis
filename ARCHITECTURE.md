@@ -1,6 +1,6 @@
 # JARVIS — Architecture
 
-Status: Phase 2 Milestone 1 implemented and verified. Phase 0 and Phase 1 (M1–M5) decisions are preserved; see `PROJECT_STATUS.md` for actual test results.
+Status: Phase 2 Milestone 2 implemented and verified. Phase 0, Phase 1 and P2-M1 decisions are preserved; see `PROJECT_STATUS.md` for actual test results.
 
 ## 1. Environment and decision context
 
@@ -52,6 +52,8 @@ Measured on 2026-11-22:
 ### Renderer (`src/renderer`)
 - `views/` — one view per navigation destination: Dashboard, Chat, PcControl, Automation, DeveloperHub, Knowledge, Productivity, Settings.
 - `components/ai-core/` — animated central visualization (canvas/CSS), status states.
+- `voice/web-speech.adapter.ts` — Chromium Web Speech implementation of the shared `SpeechRecognitionAdapter` contract.
+- `state/voice-context.tsx` — push-to-talk session state, permission gate, preview and transcript delivery.
 - `components/layout/` — window chrome, sidebar, title bar, status bar.
 - `store/` — Zustand stores for UI state; server-backed state arrives through the bridge.
 - `styles/` — design tokens, global styles, glass/holographic primitives.
@@ -95,6 +97,7 @@ Measured on 2026-11-22:
 - `control-platform.ts` — injectable, Electron-free boundary for OS actions and typed control errors.
 - `electron-control-platform.ts` — Electron adapter for allowlisted launch, clipboard, screenshot and own-window actions.
 - `control.service.ts` — permission-gated control manager with allowlist, emergency stop and audit entries.
+- `voice.service.ts` — permission-gated voice session lifecycle with sender-scoped tracking and transcript-free audit entries.
 
 ### Main — IPC guards (`src/main/utils`)
 - `ipc-guard.ts` — trusted renderer origin checks.
@@ -126,6 +129,9 @@ The same order applies to future privileged capabilities: validate, check permis
 Renderer invokes a `control:*` method → preload forwards the allowlisted channel → main validates sender and arguments → `ControlService` checks pause state and the relevant permission → the injected `ControlPlatform` performs the single allowlisted OS action → an indicator event is sent to the originating renderer → an activity entry is written with no secrets or clipboard content → a safe result is returned.
 
 Application launch is limited to an absolute-path allowlist stored in the typed `control.appAllowlist` setting. Emergency stop aborts AI streams and pauses all control actions until explicitly resumed.
+
+**Voice input flow (implemented in Phase 2 M2):**
+Explicit push-to-talk action → `VoiceProvider` checks `microphone.record` → `voice:session-start` validates the sender and logs the session in main → the renderer `SpeechRecognitionAdapter` starts capture → transcript events update a live preview → stop/blur/cancel ends the adapter and calls `voice:session-end` with outcome and character count. No audio or transcript crosses IPC; transcripts are inserted into the Chat composer locally and never auto-sent.
 
 ## 5. Important interfaces
 
@@ -247,7 +253,8 @@ Secrets are **not** stored in SQLite: provider keys live in a `safeStorage`-encr
 - BrowserWindow: `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`, `webSecurity: true`.
 - Navigation is locked to local app origin; external links open in the OS browser after confirmation.
 - IPC channel allowlist plus strict per-handler argument validation (`src/main/utils/validation.ts`); unexpected fields and arguments are rejected.
-- Every privileged capability is permission-gated and logged. `credentials.manage`, `network.request`, `app.launch`, `screen.capture`, and `clipboard.read` are enforced; capabilities that are not implemented are visible but cannot be granted.
+- Every privileged capability is permission-gated and logged. `credentials.manage`, `network.request`, `app.launch`, `screen.capture`, `clipboard.read` and `microphone.record` are enforced; capabilities that are not implemented are visible but cannot be granted.
+- Web Speech may use an external recognition service; this is disclosed in the UI. JARVIS itself records no audio and logs no transcript text.
 - OS actions are restricted to an injected allowlisted platform adapter. Unrestricted shell execution does not exist. Clipboard contents are never logged.
 - Provider API keys never cross the preload bridge in the read direction. The renderer can only set/delete a key and read an aggregate status.
 - Stream events are sent only to the renderer that started the request; destroying that renderer aborts its streams. Request/content text and credentials are never logged.
@@ -280,6 +287,9 @@ Secrets are **not** stored in SQLite: provider keys live in a `safeStorage`-encr
 | ADR-015 | Injectable `ControlPlatform` boundary | OS calls stay unit-testable; Electron imports remain confined to one adapter | 2026-11-23 |
 | ADR-016 | Absolute-path application allowlist | Enables real launches without unrestricted shell execution | 2026-11-23 |
 | ADR-017 | Emergency stop pauses control and aborts AI streams | One mechanism stops every active or queued consequential action | 2026-11-23 |
+| ADR-018 | Replaceable `SpeechRecognitionAdapter` | Voice input is provider-independent; a local engine can replace Web Speech | 2026-11-23 |
+| ADR-019 | Audio stays in the renderer; only session metadata crosses IPC | Preserves Electron sandbox and avoids persisting or logging speech | 2026-11-23 |
+| ADR-020 | Transcripts never auto-send | User must review and explicitly send recognized text | 2026-11-23 |
 
 ## 10. Risks and mitigations
 

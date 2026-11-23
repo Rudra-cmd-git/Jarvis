@@ -141,7 +141,7 @@ All commands above except `lint` were executed successfully in M1. See `PROJECT_
 
 Phase 0 (complete): discovery, architecture, docs, folder skeleton.
 Phase 1 (complete): functional desktop foundation, M1–M5 verified.
-Phase 2 (current): voice and PC control. M1 (secure PC-control foundation) is complete; M2 (voice input / push-to-talk) is next.
+Phase 2 (current): voice and PC control. M1 (secure PC control) and M2 (voice input / push-to-talk) are complete; M3 (text-to-speech and voice conversation) is next.
 Phase 2: voice + PC control. Phase 3: intelligence. Phase 4: automation. Phase 5: personal assistant. Phase 6: optimization/release.
 
 Do not start a later phase while an earlier milestone is unverified.
@@ -191,3 +191,12 @@ Do not start a later phase while an earlier milestone is unverified.
 - Consequential UI actions (allowlist removal, emergency stop) require confirmation or are clearly visible.
 - Screenshot and clipboard actions emit visible indicators to the originating renderer and the status bar.
 - Volume control, arbitrary external-window management, and file operations are not implemented and must not be presented as available.
+
+## 14. Phase 2 M2 voice-input rules (implemented)
+
+- `microphone.record` is enforced by `VoiceService` before any recognition session; no audio crosses the IPC bridge.
+- Speech recognition is behind the replaceable `SpeechRecognitionAdapter` contract. The initial Web Speech adapter may use an external service and must be disclosed as such; never describe it as offline.
+- JARVIS does not record, store or upload audio itself. No transcript text is written to the activity log.
+- Microphone activity is visible via the status bar and in-chat indicators, and stops on push-to-talk release, cancel, error, blur or window hide.
+- Transcripts are inserted into the Chat composer only after explicit recognition; they are never auto-sent.
+- TTS and wake-word remain unimplemented and must not be presented as available.

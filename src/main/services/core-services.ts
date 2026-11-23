@@ -13,6 +13,7 @@ import { ProvidersService } from './providers.service';
 import { SecretsService } from './secrets.service';
 import type { SecretCipher } from './secret-cipher';
 import { SettingsService } from './settings.service';
+import { VoiceService } from './voice.service';
 
 export interface CoreServices {
   database: DatabaseService;
@@ -24,6 +25,7 @@ export interface CoreServices {
   conversations: ConversationService;
   ai: AiService;
   control: ControlService;
+  voice: VoiceService;
   getStatus(): CoreStatus;
 }
 
@@ -74,6 +76,7 @@ export function createCoreServices({
     screenshotDirectory: path.join(userDataPath, 'screenshots'),
     onEmergencyStop: () => ai.shutdown(),
   });
+  const voice = new VoiceService(permissions, activity);
 
   const getStatus = (): CoreStatus => ({
     database: database.getStatus(),
@@ -106,6 +109,7 @@ export function createCoreServices({
     conversations,
     ai,
     control,
+    voice,
     getStatus,
   };
 }
@@ -180,6 +184,7 @@ export function shutdownCoreServices(): void {
     // Abort provider sockets before the database handle disappears; audit
     // writes are best-effort and never break shutdown.
     active.ai.shutdown();
+    active.voice.shutdown();
     active.database.close();
     lastStatus = {
       ...active.getStatus(),

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { ControlProvider } from './state/control-context';
 import { CoreProvider, useCore } from './state/core-context';
 import { RuntimeProvider, useRuntime } from './state/runtime-context';
+import { VoiceProvider } from './state/voice-context';
 import { Sidebar } from './components/layout/Sidebar';
 import { TopBar } from './components/layout/TopBar';
 import { StatusBar } from './components/layout/StatusBar';
@@ -51,7 +52,9 @@ export function App() {
     <RuntimeProvider>
       <CoreProvider>
         <ControlProvider>
-          <RuntimeShell activeView={activeView} onNavigate={setActiveView} />
+          <VoiceProvider>
+            <RuntimeShell activeView={activeView} onNavigate={setActiveView} />
+          </VoiceProvider>
         </ControlProvider>
       </CoreProvider>
     </RuntimeProvider>

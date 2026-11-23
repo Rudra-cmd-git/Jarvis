@@ -17,6 +17,11 @@ import type {
   AiStreamStartResult,
 } from './ai';
 import type {
+  VoiceSessionEndResult,
+  VoiceSessionStartResult,
+  VoiceStatus,
+} from './voice';
+import type {
   ControlAppEntry,
   ControlClipboardResult,
   ControlIndicatorEvent,
@@ -227,4 +232,16 @@ export interface JarvisApi {
   emergencyStop(): Promise<{ paused: boolean }>;
   resumeControl(): Promise<{ paused: boolean }>;
   onControlEvent(listener: (payload: ControlIndicatorEvent) => void): () => void;
+
+  getVoiceStatus(): Promise<VoiceStatus>;
+  startVoiceSession(
+    sessionId: string,
+    adapterId: string,
+    language: string,
+  ): Promise<VoiceSessionStartResult>;
+  endVoiceSession(
+    sessionId: string,
+    outcome: 'completed' | 'cancelled' | 'failed',
+    characterCount: number,
+  ): Promise<VoiceSessionEndResult>;
 }

@@ -4,7 +4,7 @@ A premium, functional Windows personal AI assistant: natural conversation, voice
 
 ## Current state
 
-**Phase 2 Milestone 1 complete.** The Phase 1 foundation (secure shell, telemetry, SQLite, encrypted secrets, permissions, activity log, AI streaming and persistent chat) is intact. JARVIS now also has permission-gated Windows control: an application launch allowlist, clipboard read, local screenshots, own-window actions, visible indicators and an emergency stop. Voice input, TTS and wake-word are intentionally not implemented yet.
+**Phase 2 Milestone 2 complete.** The Phase 1 foundation and P2-M1 PC control are intact. JARVIS now also has explicit push-to-talk voice input with a replaceable speech-to-text adapter, microphone permission gating, visible listening indicators, voice settings and transcript delivery into the chat composer. Chromium Web Speech may use an external recognition service; JARVIS records no audio. Text-to-speech and wake-word are intentionally not implemented yet.
 
 ## Run and verify
 

@@ -11,6 +11,7 @@ import { ActivityPanel } from '../components/settings/ActivityPanel';
 import { PermissionsPanel } from '../components/settings/PermissionsPanel';
 import { ProvidersPanel } from '../components/settings/ProvidersPanel';
 import { StoragePanel } from '../components/settings/StoragePanel';
+import { VoicePanel } from '../components/settings/VoicePanel';
 import { useCore } from '../state/core-context';
 import { useRuntime } from '../state/runtime-context';
 import { formatDateTime } from '../../shared/format';
@@ -70,6 +71,7 @@ export function SettingsView({ onNavigate }: { onNavigate: (view: ViewId) => voi
       </section>
 
       <ProvidersPanel />
+      <VoicePanel />
       <AiPanel />
       <PermissionsPanel />
       <ActivityPanel />
