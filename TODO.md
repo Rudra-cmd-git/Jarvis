@@ -12,7 +12,7 @@ Priority: P0 = blocks current phase, P1 = next milestone, P2 = later in phase, P
 - [x] Initialize Git repository (no commit)
 - [x] Define Phase 1 milestones and acceptance criteria
 
-## Phase 1 — Functional Desktop Foundation (IN PROGRESS — M4 complete)
+## Phase 1 — Functional Desktop Foundation (COMPLETE — M5 done)
 
 ### M1 — Scaffold and prove the shell (P0, COMPLETE)
 
@@ -79,15 +79,24 @@ Acceptance criteria: at least one real provider responds to a streamed message (
 
 M4 verification summary: `npm run typecheck` pass; `npm run test` 95/95 pass; `npm run build` pass; `npm run verify:window` 78/78 pass; `npm run dev` launched `J.A.R.V.I.S. - Foundation`.
 
-### M5 — Chat experience (P1, NEXT, depends on M4)
+### M5 — Chat experience (P1, COMPLETE)
 
-Acceptance criteria: send message, see streamed response, stop generation, create/rename/delete conversations, switch model mid-session, conversation history survives restart.
+Acceptance criteria: send message, see streamed response, stop generation, create/rename/delete conversations, switch model mid-session, conversation history survives restart. **All criteria verified 2026-11-23.**
 
-- [ ] Chat view with streaming bubbles
-- [ ] Conversation list and context management
-- [ ] Stop-generation control
-- [ ] Persistent memory opt-in controls
-- [ ] Coding/research/document assistant presets
+- [x] Chat view with streaming bubbles
+- [x] Conversation sidebar and context management
+- [x] Stop-generation control
+- [x] Markdown and code-block rendering with copy action
+- [x] Persistent conversations and messages in SQLite
+- [x] Conversation rename and delete
+- [x] Model switching mid-session
+- [x] Context capping and duplicate-submission prevention
+- [x] Cancelled/error metadata handling
+- [x] Unit tests (18 files, 99 tests total; 4 new M5 tests)
+- [x] Window verification (84 checks total; 6 new M5 checks)
+- [x] Documentation updated with actual results
+
+M5 verification summary: `npm run typecheck` pass; `npm run test` 99/99 pass; `npm run build` pass; `npm run verify:window` 84/84 pass; `npm run dev` launched `J.A.R.V.I.S. - Foundation`.
 
 ## Phase 2 — Voice and PC Control (P3, depends on Phase 1)
 
@@ -144,6 +153,6 @@ Acceptance criteria: send message, see streamed response, stop generation, creat
 | Synchronous `safeStorage` is deprecated in Electron 45 | Security/tooling | Migrate to async variants without changing `SecretCipher`; no plaintext fallback |
 | `src/renderer/App.tsx` was untracked | Git | **Resolved in the M3 commit** — now tracked and preserved |
 | Reference image not machine-readable by current model | Design | Use written brief; revisit with multimodal agent |
-| `origin/main` exists but no push after M3 | Recovery | M4 committed locally; ask before pushing |
+| `origin/main` exists but no push after M3 | Recovery | M5 committed locally; ask before pushing |
 
 Do not mark an item complete until the acceptance criteria are verified and `PROJECT_STATUS.md` is updated with real results.

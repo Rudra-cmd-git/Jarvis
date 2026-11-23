@@ -5,6 +5,7 @@ const path = require('node:path');
 const { app, BrowserWindow, ipcMain } = require('electron');
 const { registerAiIpc } = require('../dist-main/main/ipc/ai.ipc.js');
 const { registerActivityIpc } = require('../dist-main/main/ipc/activity.ipc.js');
+const { registerConversationsIpc } = require('../dist-main/main/ipc/conversations.ipc.js');
 const { registerAppIpc } = require('../dist-main/main/ipc/app.ipc.js');
 const { registerDatabaseIpc } = require('../dist-main/main/ipc/database.ipc.js');
 const { registerPermissionsIpc } = require('../dist-main/main/ipc/permissions.ipc.js');
@@ -211,24 +212,32 @@ async function stopStubServer() {
 }
 
 const EXPECTED_API = [
+  'appendConversationMessage',
   'cancelChatStream',
+  'createConversation',
+  'deleteConversation',
   'deleteSecret',
   'getAiStatus',
   'getAppInfo',
+  'getConversation',
   'getDatabaseStatus',
   'getSecretStatus',
   'getSettings',
   'getSystemMetrics',
   'listActivity',
   'listAiModels',
+  'listConversationMessages',
+  'listConversations',
   'listPermissions',
   'listProviders',
   'onChatStreamEvent',
   'quitApp',
   'removeProvider',
+  'renameConversation',
   'resetSetting',
   'saveProvider',
   'setActiveProvider',
+  'setConversationModel',
   'setPermission',
   'setSecret',
   'setSetting',
@@ -252,6 +261,7 @@ app.whenReady().then(async () => {
   registerPermissionsIpc();
   registerActivityIpc();
   registerAiIpc();
+  registerConversationsIpc();
 
   const window = new BrowserWindow({
     width: 1280,
@@ -275,7 +285,7 @@ app.whenReady().then(async () => {
   try {
     check(
       'core services initialize before the window opens',
-      coreStatus.database.initialized && coreStatus.database.schemaVersion === 1,
+      coreStatus.database.initialized && coreStatus.database.schemaVersion === 2,
       coreStatus,
     );
 
@@ -335,8 +345,8 @@ app.whenReady().then(async () => {
     check(
       'database reports schema v1 with one applied migration',
       dbStatus?.database?.initialized === true &&
-        dbStatus.database.schemaVersion === 1 &&
-        dbStatus.database.appliedMigrations.length === 1,
+        dbStatus.database.schemaVersion === 2 &&
+        dbStatus.database.appliedMigrations.length === 2,
       dbStatus?.database,
     );
     check('database file exists in userData', fs.existsSync(path.join(USER_DATA, 'jarvis.db')), USER_DATA);
@@ -377,7 +387,7 @@ app.whenReady().then(async () => {
     });
     check(
       'database reopens cleanly after shutdown',
-      restarted.database.initialized && restarted.database.schemaVersion === 1,
+      restarted.database.initialized && restarted.database.schemaVersion === 2,
       restarted.database,
     );
 
@@ -807,6 +817,95 @@ app.whenReady().then(async () => {
       cancelActivity.map((entry) => entry.action),
     );
 
+    // ---------- Milestone 5: persistent conversations ----------
+
+    const renameConversation = await runJavaScript(
+      window,
+      "window.jarvis.createConversation({title:'Rename me', model:'stub-model-a'})",
+    );
+    const renamedConversation = await runJavaScript(
+      window,
+      `window.jarvis.renameConversation(${JSON.stringify(renameConversation.id)}, 'Renamed chat')`,
+    );
+    check(
+      'conversations can be renamed',
+      renamedConversation.title === 'Renamed chat',
+      renamedConversation,
+    );
+    const removedConversation = await runJavaScript(
+      window,
+      `window.jarvis.deleteConversation(${JSON.stringify(renameConversation.id)})`,
+    );
+    check('conversations can be deleted', removedConversation.removed === true, removedConversation);
+
+    const persistenceConversation = await runJavaScript(
+      window,
+      "window.jarvis.createConversation({title:'Persistence Chat', model:'stub-model-a'})",
+    );
+    await runJavaScript(
+      window,
+      `window.jarvis.appendConversationMessage({conversationId:${JSON.stringify(persistenceConversation.id)}, role:'user', content:'persisted hello'})`,
+    );
+    await runJavaScript(window, 'window.__aiEvents = []');
+    await runJavaScript(
+      window,
+      `window.jarvis.startChatStream('req-persist-001', {messages:[{role:'user',content:'persisted hello'}], model:'stub-model-a'})`,
+    );
+    await waitFor(
+      window,
+      "window.__aiEvents.some((entry) => entry.event.type === 'done')",
+      5000,
+      'persistent conversation stream',
+    );
+    const persistenceEvents = await runJavaScript(window, 'window.__aiEvents');
+    const persistenceText = persistenceEvents
+      .filter((entry) => entry.event.type === 'delta')
+      .map((entry) => entry.event.text)
+      .join('');
+    await runJavaScript(
+      window,
+      `window.jarvis.appendConversationMessage({conversationId:${JSON.stringify(persistenceConversation.id)}, role:'assistant', content:${JSON.stringify(persistenceText)}, metadata:{status:'complete'}})`,
+    );
+    const beforeRestart = await runJavaScript(
+      window,
+      `window.jarvis.getConversation(${JSON.stringify(persistenceConversation.id)})`,
+    );
+    check(
+      'conversation messages are stored before restart',
+      beforeRestart.messages.length === 2 &&
+        beforeRestart.messages[1].content === 'Hello from stub',
+      beforeRestart.messages.map((entry) => entry.role),
+    );
+
+    shutdownCoreServices();
+    const reopened = initializeCoreServices({
+      userDataPath: USER_DATA,
+      cipher: new SafeStorageCipher(),
+    });
+    check(
+      'database reopens for conversation persistence',
+      reopened.database.initialized && reopened.database.schemaVersion === 2,
+      reopened.database,
+    );
+    await runJavaScript(window, 'window.location.reload()');
+    await waitFor(window, "document.getElementById('root')?.innerHTML.length > 0", 10000, 'renderer reload after persistence restart');
+    const afterConversationRestart = await runJavaScript(
+      window,
+      `window.jarvis.getConversation(${JSON.stringify(persistenceConversation.id)})`,
+    );
+    check(
+      'conversation history survives restart',
+      afterConversationRestart.conversation.title === 'Persistence Chat' &&
+        afterConversationRestart.messages.length === 2 &&
+        afterConversationRestart.messages[0].content === 'persisted hello' &&
+        afterConversationRestart.messages[1].content === 'Hello from stub',
+      afterConversationRestart.messages.map((entry) => entry.role),
+    );
+    await runJavaScript(
+      window,
+      `window.jarvis.deleteConversation(${JSON.stringify(persistenceConversation.id)})`,
+    );
+
     await runJavaScript(window, 'window.__aiUnsub ? window.__aiUnsub() : true');
 
     // ---------- Milestone 3: settings UI ----------
@@ -822,7 +921,7 @@ app.whenReady().then(async () => {
 
     check(
       'settings view shows real database status',
-      await runJavaScript(window, "document.querySelector('[data-testid=\"database-status\"]')?.getAttribute('data-schema-version') === '1' && document.body.textContent.includes('Initialized')"),
+      await runJavaScript(window, "document.querySelector('[data-testid=\"database-status\"]')?.getAttribute('data-schema-version') === '2' && document.body.textContent.includes('Initialized')"),
       'database status',
     );
 
@@ -942,6 +1041,32 @@ app.whenReady().then(async () => {
       uiModelSetting === 'stub-model-b',
       uiModelSetting,
     );
+
+    await runJavaScript(window, "document.querySelector('[data-view=\"chat\"]').click()");
+    await waitFor(window, "document.querySelector('[data-view-heading=\"chat\"]') !== null", 5000, 'chat view');
+    await waitFor(window, "document.querySelector('[data-conversation-id]') !== null", 8000, 'chat conversation');
+    await runJavaScript(
+      window,
+      `(() => {
+        const element = document.querySelector('[aria-label="Chat message"]');
+        if (!element) return false;
+        const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
+        setter.call(element, 'ui chat message');
+        element.dispatchEvent(new Event('input', { bubbles: true }));
+        return true;
+      })()`,
+    );
+    await runJavaScript(window, "document.querySelector('[data-action=\"send-message\"]')?.click()");
+    await waitFor(
+      window,
+      "document.querySelector('.chat-message--assistant .markdown-message')?.textContent.includes('Hello from stub')",
+      8000,
+      'chat streamed response',
+    );
+    check('chat view streams a real response through the UI', true, 'Hello from stub');
+
+    await runJavaScript(window, "document.querySelector('[data-view=\"settings\"]').click()");
+    await waitFor(window, "document.querySelector('[data-view-heading=\"settings\"]') !== null", 5000, 'settings view return');
 
     check(
       'provider card exists before UI removal',

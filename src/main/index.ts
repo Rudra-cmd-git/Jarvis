@@ -4,6 +4,7 @@ import { pathToFileURL } from 'node:url';
 import { registerAiIpc } from './ipc/ai.ipc';
 import { registerActivityIpc } from './ipc/activity.ipc';
 import { registerAppIpc } from './ipc/app.ipc';
+import { registerConversationsIpc } from './ipc/conversations.ipc';
 import { registerDatabaseIpc } from './ipc/database.ipc';
 import { registerPermissionsIpc } from './ipc/permissions.ipc';
 import { registerProvidersIpc } from './ipc/providers.ipc';
@@ -103,6 +104,7 @@ app.whenReady().then(() => {
   registerPermissionsIpc();
   registerActivityIpc();
   registerAiIpc();
+  registerConversationsIpc();
   createWindow();
 
   app.on('activate', () => {

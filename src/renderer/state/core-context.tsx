@@ -18,6 +18,12 @@ import type { AppSettings, SettingKey } from '../../shared/settings';
 import { DEFAULT_SETTINGS } from '../../shared/settings';
 import type { PermissionCapability, PermissionOverview } from '../../shared/permissions';
 import type { ProviderInput, ProviderSummary } from '../../shared/providers';
+import type {
+  AppendMessageInput,
+  ConversationInput,
+  ConversationMessage,
+  ConversationSummary,
+} from '../../shared/conversations';
 
 export interface CoreState {
   loading: boolean;
@@ -29,6 +35,11 @@ export interface CoreState {
   permissions: PermissionOverview | null;
   activity: ActivityEntry[];
   activityFilter: ActivityFilter;
+  conversations: ConversationSummary[];
+  activeConversationId: string | null;
+  conversationMessages: ConversationMessage[];
+  conversationLoading: boolean;
+  conversationError: string | null;
   refresh: () => Promise<void>;
   refreshActivity: (filter?: ActivityFilter) => Promise<void>;
   updateSetting: <K extends SettingKey>(key: K, value: AppSettings[K]) => Promise<void>;
@@ -39,6 +50,13 @@ export interface CoreState {
   setSecret: (id: string, value: string) => Promise<void>;
   deleteSecret: (id: string) => Promise<void>;
   setPermission: (capability: PermissionCapability, action: PermissionAction) => Promise<void>;
+  refreshConversations: () => Promise<void>;
+  loadConversation: (id: string) => Promise<void>;
+  createConversation: (input?: ConversationInput) => Promise<ConversationSummary>;
+  renameConversation: (id: string, title: string) => Promise<void>;
+  deleteConversation: (id: string) => Promise<void>;
+  setConversationModel: (id: string, model: string | null) => Promise<void>;
+  appendConversationMessage: (input: AppendMessageInput) => Promise<ConversationMessage>;
 }
 
 const CoreContext = createContext<CoreState | null>(null);
@@ -57,6 +75,11 @@ export function CoreProvider({ children }: { children: ReactNode }) {
   const [permissions, setPermissions] = useState<PermissionOverview | null>(null);
   const [activity, setActivity] = useState<ActivityEntry[]>([]);
   const [activityFilter, setActivityFilter] = useState<ActivityFilter>({});
+  const [conversations, setConversations] = useState<ConversationSummary[]>([]);
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
+  const [conversationMessages, setConversationMessages] = useState<ConversationMessage[]>([]);
+  const [conversationLoading, setConversationLoading] = useState(false);
+  const [conversationError, setConversationError] = useState<string | null>(null);
 
   const bridgeReady = typeof window !== 'undefined' && typeof window.jarvis?.getSettings === 'function';
 
@@ -78,13 +101,14 @@ export function CoreProvider({ children }: { children: ReactNode }) {
 
     setLoading(true);
     try {
-      const [nextCore, nextSettings, nextProviders, nextPermissions, nextActivity] =
+      const [nextCore, nextSettings, nextProviders, nextPermissions, nextActivity, nextConversations] =
         await Promise.all([
           window.jarvis.getDatabaseStatus(),
           window.jarvis.getSettings(),
           window.jarvis.listProviders(),
           window.jarvis.listPermissions(),
           window.jarvis.listActivity({ limit: 50 }),
+          window.jarvis.listConversations(),
         ]);
 
       setCoreStatus(nextCore);
@@ -93,6 +117,7 @@ export function CoreProvider({ children }: { children: ReactNode }) {
       setProviders(nextProviders);
       setPermissions(nextPermissions);
       setActivity(nextActivity);
+      setConversations(nextConversations);
       setError(null);
     } catch (cause) {
       setError(messageOf(cause, 'Core services could not be loaded.'));
@@ -156,6 +181,75 @@ export function CoreProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  const refreshConversations = useCallback(async () => {
+    if (!bridgeReady) {
+      return;
+    }
+    const list = await window.jarvis.listConversations();
+    setConversations(list);
+  }, [bridgeReady]);
+
+  const loadConversation = useCallback(async (id: string) => {
+    if (!bridgeReady) {
+      return;
+    }
+    setConversationLoading(true);
+    setConversationError(null);
+    try {
+      const detail = await window.jarvis.getConversation(id);
+      setActiveConversationId(id);
+      setConversationMessages(detail.messages);
+    } catch (cause) {
+      setConversationError(messageOf(cause, 'Conversation could not be loaded.'));
+    } finally {
+      setConversationLoading(false);
+    }
+  }, [bridgeReady]);
+
+  const createConversation = useCallback(async (input?: ConversationInput) => {
+    const created = await window.jarvis.createConversation(input);
+    setConversations(await window.jarvis.listConversations());
+    setActiveConversationId(created.id);
+    setConversationMessages([]);
+    return created;
+  }, []);
+
+  const renameConversation = useCallback(async (id: string, title: string) => {
+    await window.jarvis.renameConversation(id, title);
+    setConversations(await window.jarvis.listConversations());
+  }, []);
+
+  const deleteConversation = useCallback(async (id: string) => {
+    await window.jarvis.deleteConversation(id);
+    const list = await window.jarvis.listConversations();
+    setConversations(list);
+    if (activeConversationId === id) {
+      setActiveConversationId(null);
+      setConversationMessages([]);
+      if (list.length > 0) {
+        await loadConversation(list[0].id);
+      }
+    }
+  }, [activeConversationId, loadConversation]);
+
+  const setConversationModel = useCallback(async (id: string, model: string | null) => {
+    await window.jarvis.setConversationModel(id, model);
+    setConversations(await window.jarvis.listConversations());
+    if (activeConversationId === id) {
+      const detail = await window.jarvis.getConversation(id);
+      setConversationMessages(detail.messages);
+    }
+  }, [activeConversationId]);
+
+  const appendConversationMessage = useCallback(async (input: AppendMessageInput) => {
+    const message = await window.jarvis.appendConversationMessage(input);
+    if (input.conversationId === activeConversationId) {
+      setConversationMessages((current) => [...current, message]);
+    }
+    setConversations(await window.jarvis.listConversations());
+    return message;
+  }, [activeConversationId]);
+
   const value = useMemo<CoreState>(
     () => ({
       loading,
@@ -167,8 +261,20 @@ export function CoreProvider({ children }: { children: ReactNode }) {
       permissions,
       activity,
       activityFilter,
+      conversations,
+      activeConversationId,
+      conversationMessages,
+      conversationLoading,
+      conversationError,
       refresh,
       refreshActivity,
+      refreshConversations,
+      loadConversation,
+      createConversation,
+      renameConversation,
+      deleteConversation,
+      setConversationModel,
+      appendConversationMessage,
       updateSetting,
       resetSetting,
       saveProvider,
@@ -188,8 +294,20 @@ export function CoreProvider({ children }: { children: ReactNode }) {
       permissions,
       activity,
       activityFilter,
+      conversations,
+      activeConversationId,
+      conversationMessages,
+      conversationLoading,
+      conversationError,
       refresh,
       refreshActivity,
+      refreshConversations,
+      loadConversation,
+      createConversation,
+      renameConversation,
+      deleteConversation,
+      setConversationModel,
+      appendConversationMessage,
       updateSetting,
       resetSetting,
       saveProvider,

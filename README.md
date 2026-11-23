@@ -4,7 +4,7 @@ A premium, functional Windows personal AI assistant: natural conversation, voice
 
 ## Current state
 
-**Phase 1 Milestone 4 complete.** A real Electron desktop window launches with a secure shell, typed preload bridge, live system telemetry, SQLite persistence, typed settings, `safeStorage`-encrypted provider credentials, explicit permissions, an activity log, provider configuration, and a real OpenAI-compatible AI adapter with SSE streaming, cancellation, retry and a Settings diagnostic. Full conversational chat, voice, and PC control are intentionally not implemented yet.
+**Phase 1 complete (Milestone 5).** A real Electron desktop window launches with a secure shell, typed preload bridge, live system telemetry, SQLite persistence, typed settings, `safeStorage`-encrypted provider credentials, explicit permissions, an activity log, provider configuration, a real OpenAI-compatible AI adapter with SSE streaming, and a persistent streaming chat experience with Markdown rendering. Voice and PC control are intentionally not implemented yet.
 
 ## Run and verify
 

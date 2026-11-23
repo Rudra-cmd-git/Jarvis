@@ -1,6 +1,6 @@
 # JARVIS — Architecture
 
-Status: Phase 1 Milestone 4 implemented and verified. Earlier Phase 0, M1, M2 and M3 decisions are preserved; see `PROJECT_STATUS.md` for actual test results.
+Status: Phase 1 Milestone 5 implemented and verified. Earlier Phase 0 and M1–M4 decisions are preserved; see `PROJECT_STATUS.md` for actual test results.
 
 ## 1. Environment and decision context
 
@@ -84,6 +84,7 @@ Measured on 2026-11-22:
 - `permissions.service.ts` — capability decisions (`granted` / `denied` / `unset`), enforcement helper and audit logging.
 - `activity-log.service.ts` — append-only audit trail with category/severity/outcome filtering and redaction.
 - `providers.service.ts` — provider CRUD, activation, model normalization and credential-state reporting.
+- `conversation.service.ts` — conversation CRUD, message append/list, model selection, cascade delete and audit entries.
 - `ai/ai-errors.ts` — normalized `{ code, message, retryable, status? }` errors with redaction.
 - `ai/sse.ts` — incremental SSE decoder independent of network reads.
 - `ai/openai-compatible.provider.ts` — `fetch` + SSE adapter for OpenAI-compatible endpoints; also serves Ollama without Authorization.
@@ -208,7 +209,7 @@ The AI types above are implemented in `src/shared/ai.ts`. `Conversation` and `Me
 - A 120 s per-attempt timeout and a 15 s model-list timeout are enforced by `createTimeoutSignal`.
 - Verification uses a local HTTP stub, so no real API key or external network is needed to prove the adapter path.
 
-## 7. Database structure (schema v1, implemented)
+## 7. Database structure (schema v2, implemented)
 
 All paths under Electron `app.getPath('userData')`.
 
@@ -221,13 +222,13 @@ jarvis.db (SQLite, WAL)
 ├── permissions(capability PRIMARY KEY, decision, updated_at)
 ├── activity_log(id PRIMARY KEY, timestamp, category, severity, action, outcome, detail)
 │   └── indexes on timestamp, category, severity
-├── conversations(id PRIMARY KEY, title, created_at, updated_at, pinned, archived)
+├── conversations(id PRIMARY KEY, title, created_at, updated_at, pinned, archived, model)
 └── messages(id PRIMARY KEY, conversation_id, role, content, created_at,
              token_count, metadata_json, FOREIGN KEY conversation_id)
     └── index on (conversation_id, created_at)
 ```
 
-`conversations` and `messages` are created in v1 so M5 can persist history without a destructive migration. Memory, automation, task, reminder, app-usage and plugin tables are still planned.
+`conversations` and `messages` are created in v1; migration v2 adds `conversations.model` for per-conversation model selection. Memory, automation, task, reminder, app-usage and plugin tables are still planned.
 
 Secrets are **not** stored in SQLite: provider keys live in a `safeStorage`-encrypted file (`secrets.bin`) with opaque `provider:<id>` references. The file is written atomically through a temporary file and never contains plaintext. Migrations are append-only, validated as contiguous, applied inside `BEGIN IMMEDIATE`, and recorded in `schema_migrations`; a database newer than the application refuses to open.
 

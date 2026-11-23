@@ -140,7 +140,7 @@ All commands above except `lint` were executed successfully in M1. See `PROJECT_
 ## 9. Phase boundaries
 
 Phase 0 (complete): discovery, architecture, docs, folder skeleton.
-Phase 1 (current): functional desktop foundation. M1, M2, M3 and M4 are complete; M5 chat experience is next.
+Phase 1 (current): functional desktop foundation. M1, M2, M3, M4 and M5 are complete; Phase 1 is complete and Phase 2 (voice and PC control) is next.
 Phase 2: voice + PC control. Phase 3: intelligence. Phase 4: automation. Phase 5: personal assistant. Phase 6: optimization/release.
 
 Do not start a later phase while an earlier milestone is unverified.
@@ -167,3 +167,15 @@ Do not start a later phase while an earlier milestone is unverified.
 - Destroying a renderer aborts its streams; application shutdown aborts all streams before closing the database.
 - Provider adapters are selected by protocol through `ProviderRegistry`. Do not hardcode a vendor as the only option.
 - M4 contains only a Settings diagnostic. The full chat UI and conversation persistence belong to M5.
+
+## 12. M5 chat and persistence rules (implemented)
+
+- Conversations and messages persist through `ConversationService`; the renderer never writes SQL directly.
+- `AiService` remains the only streaming implementation. The Chat view renders events; it does not create a second transport.
+- User messages are persisted before streaming starts. Assistant messages are persisted only after a terminal event, with metadata recording `complete`, `cancelled` or `error`.
+- Cancelled streams never mark an assistant message complete.
+- Context sent to a provider is capped to the most recent 40 messages and 100,000 characters, dropping oldest messages first.
+- Duplicate submissions are prevented while a stream is active.
+- Markdown rendering is presentational only; it must not execute scripts or fetch remote resources. Links open in the system browser after confirmation in later phases.
+- Conversation deletion cascades to messages and requires confirmation.
+- Restart persistence is verified with a real database reopen and renderer reload.

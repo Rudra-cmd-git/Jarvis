@@ -2,6 +2,13 @@ import type { AppSettings, SettingKey } from './settings';
 import type { PermissionCapability, PermissionOverview } from './permissions';
 import type { ProviderInput, ProviderSummary } from './providers';
 import type {
+  AppendMessageInput,
+  ConversationDetail,
+  ConversationInput,
+  ConversationMessage,
+  ConversationSummary,
+} from './conversations';
+import type {
   AiCancelResult,
   AiChatRequest,
   AiModelListResult,
@@ -183,6 +190,22 @@ export interface JarvisApi {
 
   listActivity(filter?: ActivityFilter): Promise<ActivityEntry[]>;
 
+  listConversations(): Promise<ConversationSummary[]>;
+  getConversation(id: string): Promise<ConversationDetail>;
+  createConversation(input?: ConversationInput): Promise<ConversationSummary>;
+  renameConversation(id: string, title: string): Promise<ConversationSummary>;
+  deleteConversation(id: string): Promise<{ removed: boolean }>;
+  setConversationModel(id: string, model: string | null): Promise<ConversationSummary>;
+  appendConversationMessage(input: AppendMessageInput): Promise<ConversationMessage>;
+  listConversationMessages(id: string): Promise<ConversationMessage[]>;
+  listConversations(): Promise<ConversationSummary[]>;
+  getConversation(id: string): Promise<ConversationDetail>;
+  createConversation(input?: ConversationInput): Promise<ConversationSummary>;
+  renameConversation(id: string, title: string): Promise<ConversationSummary>;
+  deleteConversation(id: string): Promise<{ removed: boolean }>;
+  setConversationModel(id: string, model: string | null): Promise<ConversationSummary>;
+  appendConversationMessage(input: AppendMessageInput): Promise<ConversationMessage>;
+  listConversationMessages(id: string): Promise<ConversationMessage[]>;
   getAiStatus(): Promise<AiStatus>;
   listAiModels(providerId?: string): Promise<AiModelListResult>;
   startChatStream(requestId: string, request: AiChatRequest): Promise<AiStreamStartResult>;

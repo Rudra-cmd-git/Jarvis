@@ -79,6 +79,13 @@ export const MIGRATIONS: readonly Migration[] = [
       `);
     },
   },
+  {
+    version: 2,
+    name: 'conversation-model-selection',
+    up: (db) => {
+      db.exec('ALTER TABLE conversations ADD COLUMN model TEXT;');
+    },
+  },
 ];
 
 export const LATEST_SCHEMA_VERSION = MIGRATIONS.reduce(

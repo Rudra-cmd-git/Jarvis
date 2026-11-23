@@ -21,6 +21,13 @@ import type {
 import type { AppSettings, SettingKey } from '../shared/settings';
 import type { PermissionCapability, PermissionOverview } from '../shared/permissions';
 import type { ProviderInput, ProviderSummary } from '../shared/providers';
+import type {
+  AppendMessageInput,
+  ConversationDetail,
+  ConversationInput,
+  ConversationMessage,
+  ConversationSummary,
+} from '../shared/conversations';
 
 const allowedChannels = new Set<string>(Object.values(IPC_CHANNELS));
 
@@ -62,6 +69,23 @@ const api: JarvisApi = {
 
   listActivity: (filter?: ActivityFilter) =>
     invoke<ActivityEntry[]>(IPC_CHANNELS.ACTIVITY_LIST, filter ?? {}),
+
+  listConversations: () =>
+    invoke<ConversationSummary[]>(IPC_CHANNELS.CONVERSATIONS_LIST),
+  getConversation: (id: string) =>
+    invoke<ConversationDetail>(IPC_CHANNELS.CONVERSATIONS_GET, { id }),
+  createConversation: (input?: ConversationInput) =>
+    invoke<ConversationSummary>(IPC_CHANNELS.CONVERSATIONS_CREATE, input ?? {}),
+  renameConversation: (id: string, title: string) =>
+    invoke<ConversationSummary>(IPC_CHANNELS.CONVERSATIONS_RENAME, { id, title }),
+  deleteConversation: (id: string) =>
+    invoke<{ removed: boolean }>(IPC_CHANNELS.CONVERSATIONS_DELETE, { id }),
+  setConversationModel: (id: string, model: string | null) =>
+    invoke<ConversationSummary>(IPC_CHANNELS.CONVERSATIONS_SET_MODEL, { id, model }),
+  appendConversationMessage: (input: AppendMessageInput) =>
+    invoke<ConversationMessage>(IPC_CHANNELS.CONVERSATIONS_APPEND_MESSAGE, input),
+  listConversationMessages: (id: string) =>
+    invoke<ConversationMessage[]>(IPC_CHANNELS.CONVERSATIONS_LIST_MESSAGES, { id }),
 
   getAiStatus: () => invoke<AiStatus>(IPC_CHANNELS.AI_GET_STATUS),
   listAiModels: (providerId?: string) =>

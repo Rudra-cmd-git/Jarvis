@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import type { DatabaseStatus, MigrationInfo } from '../../shared/types';
-import { LATEST_SCHEMA_VERSION, MIGRATIONS, type Migration } from './migrations';
+import { MIGRATIONS, type Migration } from './migrations';
 
 interface MigrationRow {
   version: number;
@@ -92,7 +92,7 @@ export class DatabaseService {
       const highestApplied = appliedRows.reduce((highest, row) => Math.max(highest, row.version), 0);
       const highestKnown = this.migrations.reduce(
         (highest, migration) => Math.max(highest, migration.version),
-        LATEST_SCHEMA_VERSION,
+        0,
       );
 
       if (highestApplied > highestKnown) {

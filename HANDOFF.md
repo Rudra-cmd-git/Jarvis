@@ -2,105 +2,85 @@
 
 ## 1. Exact development stage
 
-**Phase 1 — Functional Desktop Foundation, Milestone 4: COMPLETE.**
-Phase 0 and M1–M3 are preserved. M4 adds a real AI provider layer: normalized contracts, an OpenAI-compatible SSE adapter, registry/router, permission-gated streaming IPC, retry/cancellation and a minimal Settings diagnostic.
+**Phase 1 — Functional Desktop Foundation: COMPLETE.**
+M1–M5 are implemented and verified. The application now has a real streaming chat experience with persistent conversations, Markdown rendering, provider/model selection and restart-safe storage.
 
 ## 2. Last completed task
 
-Implemented M4:
+Implemented M5:
 
-- `src/shared/ai.ts` with `AiProvider`, `AiChatRequest`, `AiProviderChunk`, `AiStreamEvent`, `AiError`, `AiStatus`, limits and request-ID pattern.
-- `ai-errors.ts` (redacted normalized errors), `sse.ts` (incremental SSE parser), `openai-compatible.provider.ts` (`fetch` + SSE + cancellation + model listing), `provider-registry.ts`, `model-router.ts`, `retry.ts`, `ai.service.ts`.
-- `network.request` enabled and enforced; provider keys read only in the main process at request time.
-- IPC channels `ai:get-status`, `ai:list-models`, `ai:stream-start`, `ai:stream-cancel`, `ai:stream-event`; validated in `ai.ipc.ts` and exposed by the preload with subscribe/unsubscribe.
-- `AiPanel` in Settings with real status, permission grant, model selector, connection test and stream/cancel diagnostic.
-- 31 new unit tests and 20 new window-verification checks using a local HTTP stub.
+- `ConversationService` with create, list, get, rename, delete, model selection and message append/list.
+- Schema migration v2 adding `conversations.model`.
+- Conversation IPC handlers and preload methods with strict validation.
+- Chat view rewrite: conversation sidebar, streaming bubbles, Markdown/code rendering, composer, stop generation, model selector, auto-scroll and loading/error/empty states.
+- Context capping (40 messages / 100,000 characters), duplicate-submission prevention and cancelled/error metadata.
+- 4 new unit tests and 6 new window-verification checks, including restart persistence and real UI streaming.
 
 ## 3. Current unfinished task
 
-None inside M4. The next task is Phase 1 Milestone 5, defined in section 9.
+None inside Phase 1. The next task is Phase 2, defined in section 9.
 
 ## 4. Files created / modified
 
-Created (M4):
-- `src/shared/ai.ts`
-- `src/main/services/ai/ai-errors.ts`
-- `src/main/services/ai/sse.ts`
-- `src/main/services/ai/openai-compatible.provider.ts`
-- `src/main/services/ai/provider-registry.ts`
-- `src/main/services/ai/model-router.ts`
-- `src/main/services/ai/retry.ts`
-- `src/main/services/ai/ai.service.ts`
-- `src/main/ipc/ai.ipc.ts`
-- `src/renderer/components/settings/AiPanel.tsx`
-- `tests/unit/ai-sse.test.ts`
-- `tests/unit/ai-errors.test.ts`
-- `tests/unit/ai-retry.test.ts`
-- `tests/unit/ai-openai-provider.test.ts`
-- `tests/unit/ai-router.test.ts`
-- `tests/unit/ai-service.test.ts`
+Created (M5):
+- `src/shared/conversations.ts`
+- `src/main/services/conversation.service.ts`
+- `src/main/ipc/conversations.ipc.ts`
+- `src/renderer/components/chat/MarkdownMessage.tsx`
+- `src/renderer/views/Chat.tsx` (rewritten)
+- `tests/unit/conversation.test.ts`
 
-Modified (M4):
-- `src/shared/types.ts`, `src/shared/ipc-channels.ts`, `src/shared/permissions.ts`
-- `src/main/services/providers.service.ts` (added `get(id)`)
-- `src/main/services/core-services.ts` (AI composition + shutdown abort)
-- `src/main/index.ts`, `src/preload/index.ts`
-- `src/renderer/views/Settings.tsx`, `src/renderer/styles/global.css`
-- `src/main/utils/validation.ts` (added `asNumber`)
-- `src/main/services/ai/sse.ts` (empty-event fix)
-- `tests/unit/permissions.test.ts` (network permission expectation)
-- `scripts/verify-window.cjs` (AI IPC surface, local stub server, M4 API/UI checks, diagnostic logging)
+Modified (M5):
+- `src/main/services/migrations.ts` (migration v2)
+- `src/main/services/database.service.ts` (highest-known fallback fix)
+- `src/main/services/core-services.ts`
+- `src/main/index.ts`
+- `src/shared/types.ts`, `src/shared/ipc-channels.ts`
+- `src/preload/index.ts`
+- `src/renderer/state/core-context.tsx`
+- `src/renderer/styles/global.css`
+- `scripts/verify-window.cjs`
 - `AGENTS.md`, `ARCHITECTURE.md`, `PROJECT_STATUS.md`, `HANDOFF.md`, `TODO.md`, `README.md`
 
 Preserved untouched: `Futuristic JARVIS Holographic Desktop Interface.png`.
 
 ## 5. Important implementation details
 
-### Contracts and adapter
-- `AiProvider` lives in `src/shared/ai.ts` but must only be used at runtime in the main process.
-- `OpenAiCompatibleProvider` appends `/chat/completions` and `/models` to the stored base URL. It sends `stream: true`, optional `temperature`/`max_tokens`, and `stream_options: { include_usage: true }` for `openai-compatible` (not Ollama).
-- Both streaming `delta.content` and non-streaming `message.content` are handled; usage may arrive in a final chunk with no choices.
-- SSE is parsed incrementally; blank/keep-alive `data:` events are ignored. Named events, CRLF, comments and multi-line data are supported.
-- Errors are normalized: `permission_denied`, `provider_missing`, `provider_disabled`, `model_missing`, `credential_unavailable`, `network_error`, `timeout`, `http_error`, `rate_limited`, `invalid_response`, `aborted`, `busy`, `invalid_request`, `unsupported_protocol`, `unknown`.
-- 401/403, 404, 400-class errors are not retryable; 408, 429 and 5xx are retryable.
+### Conversation persistence
+- `ConversationService` owns all conversation/message SQL. Messages are ordered by `created_at, rowid`.
+- `conversations` already existed in schema v1; migration v2 adds `model TEXT`.
+- `appendMessage` updates `conversations.updated_at`.
+- Deleting a conversation cascades to messages through the foreign key.
+- Titles are 1–120 characters; message content is 1–100,000 characters.
 
-### Service lifecycle
-- `AiService.startStream(senderId, requestId, request, emit)` returns `{ accepted, requestId, error? }` immediately and runs the stream asynchronously.
-- Only one stream per request ID; at most 4 concurrent streams per renderer. Request IDs match `^[A-Za-z0-9_-]{8,80}$`.
-- `network.request` is checked before provider resolution and again for model listing. Denials are audited.
-- Retries happen only while `emittedContent === false`. Default policy: 3 attempts, 300 ms base delay, 2 s cap. Tests inject a 1 ms policy.
-- Per-attempt timeout is 120 s; model-list timeout is 15 s. `createTimeoutSignal` links user cancellation and timeout while distinguishing them.
-- Every stream has exactly one terminal event: `done`, `error` or `cancelled`. Terminal activity entries use `ai.request.completed`, `ai.request.failed` or `ai.request.cancelled`.
-- `cancelStream` verifies the sender ID; `cancelAll` is called from the IPC handler when a `WebContents` is destroyed and from `shutdownCoreServices`.
+### Chat runtime
+- The Chat view auto-creates a conversation on first load when none exist.
+- User messages are persisted before streaming starts.
+- Assistant messages are persisted after `done`, `error` or `cancelled`, with metadata `{ status, ... }`. Empty cancelled/error drafts are not persisted.
+- `handleSend` builds context from `conversationMessages` plus the new user message, capped by `capMessages`.
+- `activeRequestId` is a ref so the single event subscription remains stable.
+- Model changes call `setConversationModel` when a conversation is active, otherwise update the global default.
+- Rename uses `window.prompt`; delete uses `window.confirm`.
 
-### IPC and security
-- `ai:stream-event` is main→renderer only; it is not a `handle` channel. Events are sent to `event.sender` exclusively.
-- Every AI handler calls `assertTrustedRenderer` and validates argument count, record shape, allowed keys and value types. A new `asNumber` validator covers temperature.
-- No secret reading API was added. `getAiStatus()` reports only provider/model/protocol/credential-state/permission/detail.
-- The renderer never performs network requests directly; CSP `connect-src` remains unchanged.
-
-### Renderer
-- `AiPanel` is rendered in Settings after the provider panel. It fetches status on mount and when settings/permissions change.
-- “Test connection” calls `listAiModels()`; the stream diagnostic calls `startChatStream`/`cancelChatStream` and renders deltas. This is a diagnostic, not the M5 chat UI.
-- The default-model selector writes `ai.defaultModel` through the existing settings API.
+### Markdown rendering
+- `MarkdownMessage` renders headings, paragraphs, lists, inline code, bold, italic, links and fenced code blocks.
+- Fenced code blocks include a Copy button using `navigator.clipboard`.
+- Rendering is presentational only; no script execution.
 
 ### Verification
-- `scripts/verify-window.cjs` starts a local `http` stub on an ephemeral 127.0.0.1 port. It serves `/v1/models`, streams normal SSE, returns 503 once for `retry-model`, 401 for `denied-model`, and a slow ticking stream for `slow-model`.
-- The harness asserts the dummy API key appears as `Authorization: Bearer …` in the stub request but never in events, status or activity.
-- It also asserts permission denial, model/provider switching, retry, normalized errors, cancellation, terminal audit, and real UI interactions.
-- `lastScript` diagnostic logging was added to the harness to identify failing renderer expressions; safe to keep or remove.
+- `verify:window` now has 84 checks, including conversation rename/delete, persistence before and after restart, and real chat UI streaming.
+- The local HTTP stub remains the only network dependency.
 
 ## 6. Errors and blockers encountered
 
 | Error / blocker | Resolution |
 | --- | --- |
-| `ai-errors.ts` imported `../../shared/ai` from `services/ai` | Corrected to `../../../shared/ai` |
-| Preload lacked the five new `JarvisApi` members | Implemented invoke methods and event subscription/unsubscribe |
-| Existing permission test expected only one enforced capability | Updated to include `network.request` |
-| SSE decoder did not reset `dataLines` for empty events | Reset before dispatch; prevents data bleed into later events |
-| Stream test fake resolved on abort instead of throwing | Fake now rejects with `AbortError`, matching the real adapter |
-| Verification subscription expression used semicolons inside parentheses | Wrapped in an explicit arrow IIFE |
-| `EXPECTED_API` still had 17 methods | Updated to 22; verification now passes |
+| Duplicate `Conversation*` imports in `types.ts` | Removed the duplicate import block |
+| Unused conversation types in IPC handler | Removed type-only import |
+| `highestKnown` defaulted to `LATEST_SCHEMA_VERSION` | Changed fallback to `0` so an empty migration set supports no schema |
+| `afterRestart` variable collision in verify harness | Renamed persistence variable to `afterConversationRestart` |
+| Chat UI navigation left settings checks stranded | Navigated back to settings before provider-form checks |
+| Markdown file accidentally contained planning text | Rewrote the file cleanly |
 
 No unresolved source-code errors are known.
 
@@ -109,43 +89,49 @@ No unresolved source-code errors are known.
 Executed on 2026-11-23:
 
 - `npm run typecheck` — pass, zero errors.
-- `npm run test` — 17 files, 95 tests, 0 failed.
+- `npm run test` — 18 files, 99 tests, 0 failed.
 - `npm run build` — pass; main, bundled preload, renderer.
-- `npm run verify:window` — 78 checks, 0 failed.
+- `npm run verify:window` — 84 checks, 0 failed.
 - `npm run dev` — real window launched with title `J.A.R.V.I.S. - Foundation`.
 
 ## 8. Git status
 
-- Commit `48ff77e` — M3 checkpoint.
-- Latest commit on `main` — M4 complete (source, tests, verification harness and documentation).
+- Commit `be8c3dd` — M4 checkpoint.
+- Latest commit on `main` — M5 complete (source, tests, verification harness and documentation).
 - `origin/main` still points to M3; no push has been performed.
 - `.opencode/` remains untracked local tooling state and must not be committed.
 - **Do not commit or push without explicit user approval.**
 
-## 9. Exact next development task (Phase 1 Milestone 5)
+## 9. Exact next development task (Phase 2)
 
-**Chat experience.** Scope from `TODO.md`:
+**Voice and PC control.** Scope from `TODO.md`:
 
-Acceptance criteria: send a message, see a streamed response, stop generation, create/rename/delete conversations, switch model mid-session, and have conversation history survive restart.
+- Speech-to-text with push-to-talk and configurable language.
+- Text-to-speech with voice selection and interruptible playback.
+- Wake-word architecture with explicit opt-in and visible indicator.
+- Voice/text mode switching.
+- Application launch/close with allowlist and permission prompts.
+- Window management.
+- File/folder search and open.
+- Screenshot, clipboard read (permission-gated, indicator visible).
+- Volume/display/network status and supported controls.
+- Activity log entries for every privileged action.
 
-1. Replace the M4 Settings stream diagnostic with a full Chat view experience while keeping the M4 API intact.
-2. Use schema-v1 `conversations` and `messages` tables through a new `ConversationService` with typed CRUD and transactional writes.
-3. Persist all messages (user and assistant) after a stream completes or is cancelled; never persist credentials or raw provider payloads.
-4. Add IPC channels and preload methods for conversation list/create/rename/delete/message list.
-5. Wire `AiService.startChatStream` into the Chat view and render `delta` events into the assistant message; `cancelled` must update the message state without orphaned audit entries.
-6. Add stop-generation control, conversation switching, model selection mid-session and truthful loading/error/empty states.
-7. Keep the cinematic glass/cyan design and the 960×640 layout.
-8. Add unit tests for conversation persistence and extend `verify:window` with real UI chat/conversation checks using the local stub server.
-9. Update all continuity docs after verification.
+Implementation guidance:
+1. Add Windows system-control services and permission capabilities before exposing UI actions.
+2. Use the existing permission/activity framework; every privileged action must be auditable.
+3. Keep voice capture and screen capture explicitly opt-in with visible indicators.
+4. Add provider-independent voice settings and a safe command allowlist.
+5. Extend `verify:window` with non-destructive checks or a local stub; do not automate destructive PC actions.
+6. Update all continuity docs after verification.
 
-Out of scope for M5: voice, PC control, automation, plugin system.
+Out of scope for Phase 2: intelligence, automation engine, plugins and packaging.
 
 ## 10. Instructions for the next AI agent
 
 1. Follow the takeover protocol in `AGENTS.md` exactly.
 2. Verify the current implementation with typecheck, tests, build and `verify:window` before changing anything.
-3. Read `ARCHITECTURE.md` sections 4–9 and the M4 source before designing M5.
-4. Keep keys in the main process; never add a renderer getter or log request bodies.
-5. Reuse `AiService` instead of writing a second streaming implementation.
-6. Do not reintroduce Tauri/Rust or add native dependencies.
-7. Keep the reference image untouched and do not commit without approval.
+3. Read `ARCHITECTURE.md` sections 4–9 and the M5 source before designing Phase 2.
+4. Reuse the existing permission, activity, settings and AI services; do not duplicate streaming or storage code.
+5. Do not reintroduce Tauri/Rust or add native dependencies without approval.
+6. Keep the reference image untouched and do not commit without approval.

@@ -4,6 +4,7 @@ import { AiService } from './ai/ai.service';
 import { ModelRouter } from './ai/model-router';
 import { createDefaultProviderRegistry } from './ai/provider-registry';
 import { ActivityLogService } from './activity-log.service';
+import { ConversationService } from './conversation.service';
 import { DatabaseService } from './database.service';
 import { PermissionsService } from './permissions.service';
 import { ProvidersService } from './providers.service';
@@ -18,6 +19,7 @@ export interface CoreServices {
   permissions: PermissionsService;
   activity: ActivityLogService;
   providers: ProvidersService;
+  conversations: ConversationService;
   ai: AiService;
   getStatus(): CoreStatus;
 }
@@ -49,6 +51,7 @@ export function createCoreServices({ userDataPath, cipher }: CreateCoreOptions):
   const settings = new SettingsService(database);
   const permissions = new PermissionsService(database, activity);
   const providers = new ProvidersService(database, settings, secrets, activity);
+  const conversations = new ConversationService(database, activity);
   const ai = new AiService({
     registry: createDefaultProviderRegistry(),
     router: new ModelRouter(providers, settings, secrets),
@@ -84,6 +87,7 @@ export function createCoreServices({ userDataPath, cipher }: CreateCoreOptions):
     permissions,
     activity,
     providers,
+    conversations,
     ai,
     getStatus,
   };
