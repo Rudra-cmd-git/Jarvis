@@ -218,6 +218,15 @@ button {
   box-shadow: 0 0 10px rgba(255, 107, 125, 0.8);
 }
 
+.status-control-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--danger, #ff6b7d);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+}
+
 .workspace {
   flex: 1;
   min-width: 0;

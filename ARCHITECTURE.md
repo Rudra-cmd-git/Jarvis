@@ -1,6 +1,6 @@
 # JARVIS — Architecture
 
-Status: Phase 1 Milestone 5 implemented and verified. Earlier Phase 0 and M1–M4 decisions are preserved; see `PROJECT_STATUS.md` for actual test results.
+Status: Phase 2 Milestone 1 implemented and verified. Phase 0 and Phase 1 (M1–M5) decisions are preserved; see `PROJECT_STATUS.md` for actual test results.
 
 ## 1. Environment and decision context
 
@@ -92,6 +92,9 @@ Measured on 2026-11-22:
 - `ai/model-router.ts` — active provider/model resolution and main-only key loading.
 - `ai/retry.ts` — retry decision, exponential backoff, abortable sleep and timeout-signal linking.
 - `ai/ai.service.ts` — stream lifecycle manager: permission gate, activity audit, retry, cancellation and event emission.
+- `control-platform.ts` — injectable, Electron-free boundary for OS actions and typed control errors.
+- `electron-control-platform.ts` — Electron adapter for allowlisted launch, clipboard, screenshot and own-window actions.
+- `control.service.ts` — permission-gated control manager with allowlist, emergency stop and audit entries.
 
 ### Main — IPC guards (`src/main/utils`)
 - `ipc-guard.ts` — trusted renderer origin checks.
@@ -118,6 +121,11 @@ The M5 Chat view will own message composition and conversation persistence; M4 o
 Renderer invokes `secrets:set` → preload forwards to the allowlisted channel → main validates sender and arguments → `PermissionsService.require('credentials.manage')` → `SecretsService` encrypts with `safeStorage` and writes atomically → `ActivityLogService` records the outcome (redacted) → renderer receives only `SecretStorageStatus`, never the key.
 
 The same order applies to future privileged capabilities: validate, check permission, execute through a dedicated service, log, then return a non-secret result.
+
+**PC control flow (implemented in Phase 2 M1):**
+Renderer invokes a `control:*` method → preload forwards the allowlisted channel → main validates sender and arguments → `ControlService` checks pause state and the relevant permission → the injected `ControlPlatform` performs the single allowlisted OS action → an indicator event is sent to the originating renderer → an activity entry is written with no secrets or clipboard content → a safe result is returned.
+
+Application launch is limited to an absolute-path allowlist stored in the typed `control.appAllowlist` setting. Emergency stop aborts AI streams and pauses all control actions until explicitly resumed.
 
 ## 5. Important interfaces
 
@@ -230,6 +238,8 @@ jarvis.db (SQLite, WAL)
 
 `conversations` and `messages` are created in v1; migration v2 adds `conversations.model` for per-conversation model selection. Memory, automation, task, reminder, app-usage and plugin tables are still planned.
 
+The application allowlist is stored as the typed `control.appAllowlist` setting; it does not require a schema migration.
+
 Secrets are **not** stored in SQLite: provider keys live in a `safeStorage`-encrypted file (`secrets.bin`) with opaque `provider:<id>` references. The file is written atomically through a temporary file and never contains plaintext. Migrations are append-only, validated as contiguous, applied inside `BEGIN IMMEDIATE`, and recorded in `schema_migrations`; a database newer than the application refuses to open.
 
 ## 8. Security design
@@ -237,7 +247,8 @@ Secrets are **not** stored in SQLite: provider keys live in a `safeStorage`-encr
 - BrowserWindow: `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`, `webSecurity: true`.
 - Navigation is locked to local app origin; external links open in the OS browser after confirmation.
 - IPC channel allowlist plus strict per-handler argument validation (`src/main/utils/validation.ts`); unexpected fields and arguments are rejected.
-- Every privileged capability is permission-gated and logged. `credentials.manage` and `network.request` are enforced; capabilities that are not implemented are visible but cannot be granted.
+- Every privileged capability is permission-gated and logged. `credentials.manage`, `network.request`, `app.launch`, `screen.capture`, and `clipboard.read` are enforced; capabilities that are not implemented are visible but cannot be granted.
+- OS actions are restricted to an injected allowlisted platform adapter. Unrestricted shell execution does not exist. Clipboard contents are never logged.
 - Provider API keys never cross the preload bridge in the read direction. The renderer can only set/delete a key and read an aggregate status.
 - Stream events are sent only to the renderer that started the request; destroying that renderer aborts its streams. Request/content text and credentials are never logged.
 - Activity details are redacted for `sk-...`, `Bearer ...`, and `api_key=...` patterns and capped in length.
@@ -266,6 +277,9 @@ Secrets are **not** stored in SQLite: provider keys live in a `safeStorage`-encr
 | ADR-012 | Event-based streaming with per-request IDs | `ipcRenderer.invoke` is request/response; events carry deltas and terminal states to one sender | 2026-11-23 |
 | ADR-013 | Retry only before first emitted chunk | Re-sending partial assistant output would duplicate visible text | 2026-11-23 |
 | ADR-014 | Local stub server for window verification | Proves real SSE/network behavior without secrets or external services | 2026-11-23 |
+| ADR-015 | Injectable `ControlPlatform` boundary | OS calls stay unit-testable; Electron imports remain confined to one adapter | 2026-11-23 |
+| ADR-016 | Absolute-path application allowlist | Enables real launches without unrestricted shell execution | 2026-11-23 |
+| ADR-017 | Emergency stop pauses control and aborts AI streams | One mechanism stops every active or queued consequential action | 2026-11-23 |
 
 ## 10. Risks and mitigations
 

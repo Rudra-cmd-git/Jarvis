@@ -4,6 +4,8 @@ import { AiService } from './ai/ai.service';
 import { ModelRouter } from './ai/model-router';
 import { createDefaultProviderRegistry } from './ai/provider-registry';
 import { ActivityLogService } from './activity-log.service';
+import { ControlService } from './control.service';
+import type { ControlPlatform } from './control-platform';
 import { ConversationService } from './conversation.service';
 import { DatabaseService } from './database.service';
 import { PermissionsService } from './permissions.service';
@@ -21,12 +23,14 @@ export interface CoreServices {
   providers: ProvidersService;
   conversations: ConversationService;
   ai: AiService;
+  control: ControlService;
   getStatus(): CoreStatus;
 }
 
 export interface CreateCoreOptions {
   userDataPath: string;
   cipher: SecretCipher;
+  controlPlatform: ControlPlatform;
 }
 
 function safeMessage(error: unknown): string {
@@ -36,7 +40,11 @@ function safeMessage(error: unknown): string {
   return 'Core services failed to initialize.';
 }
 
-export function createCoreServices({ userDataPath, cipher }: CreateCoreOptions): CoreServices {
+export function createCoreServices({
+  userDataPath,
+  cipher,
+  controlPlatform,
+}: CreateCoreOptions): CoreServices {
   const database = new DatabaseService(path.join(userDataPath, 'jarvis.db'));
   const secrets = new SecretsService(path.join(userDataPath, 'secrets.bin'), cipher);
 
@@ -57,6 +65,14 @@ export function createCoreServices({ userDataPath, cipher }: CreateCoreOptions):
     router: new ModelRouter(providers, settings, secrets),
     permissions,
     activity,
+  });
+  const control = new ControlService({
+    settings,
+    permissions,
+    activity,
+    platform: controlPlatform,
+    screenshotDirectory: path.join(userDataPath, 'screenshots'),
+    onEmergencyStop: () => ai.shutdown(),
   });
 
   const getStatus = (): CoreStatus => ({
@@ -89,6 +105,7 @@ export function createCoreServices({ userDataPath, cipher }: CreateCoreOptions):
     providers,
     conversations,
     ai,
+    control,
     getStatus,
   };
 }

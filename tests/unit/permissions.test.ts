@@ -36,6 +36,9 @@ describe('PermissionsService', () => {
     expect(overview.permissions.filter((entry) => entry.available).map((entry) => entry.capability)).toEqual([
       'credentials.manage',
       'network.request',
+      'app.launch',
+      'screen.capture',
+      'clipboard.read',
     ]);
   });
 

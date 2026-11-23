@@ -16,6 +16,16 @@ import type {
   AiStreamEventPayload,
   AiStreamStartResult,
 } from './ai';
+import type {
+  ControlAppEntry,
+  ControlClipboardResult,
+  ControlIndicatorEvent,
+  ControlLaunchResult,
+  ControlScreenshotResult,
+  ControlStatus,
+  ControlWindowAction,
+  ControlWindowResult,
+} from './control';
 
 export type ViewId =
   | 'dashboard'
@@ -99,7 +109,8 @@ export type ActivityCategory =
   | 'settings'
   | 'provider'
   | 'permission'
-  | 'security';
+  | 'security'
+  | 'control';
 
 export type ActivitySeverity = 'info' | 'warning' | 'error';
 
@@ -112,6 +123,7 @@ export const ACTIVITY_CATEGORIES: readonly ActivityCategory[] = [
   'provider',
   'permission',
   'security',
+  'control',
 ];
 
 export const ACTIVITY_SEVERITIES: readonly ActivitySeverity[] = ['info', 'warning', 'error'];
@@ -198,17 +210,21 @@ export interface JarvisApi {
   setConversationModel(id: string, model: string | null): Promise<ConversationSummary>;
   appendConversationMessage(input: AppendMessageInput): Promise<ConversationMessage>;
   listConversationMessages(id: string): Promise<ConversationMessage[]>;
-  listConversations(): Promise<ConversationSummary[]>;
-  getConversation(id: string): Promise<ConversationDetail>;
-  createConversation(input?: ConversationInput): Promise<ConversationSummary>;
-  renameConversation(id: string, title: string): Promise<ConversationSummary>;
-  deleteConversation(id: string): Promise<{ removed: boolean }>;
-  setConversationModel(id: string, model: string | null): Promise<ConversationSummary>;
-  appendConversationMessage(input: AppendMessageInput): Promise<ConversationMessage>;
-  listConversationMessages(id: string): Promise<ConversationMessage[]>;
+
   getAiStatus(): Promise<AiStatus>;
   listAiModels(providerId?: string): Promise<AiModelListResult>;
   startChatStream(requestId: string, request: AiChatRequest): Promise<AiStreamStartResult>;
   cancelChatStream(requestId: string): Promise<AiCancelResult>;
   onChatStreamEvent(listener: (payload: AiStreamEventPayload) => void): () => void;
+
+  getControlStatus(): Promise<ControlStatus>;
+  addControlApp(entry: ControlAppEntry): Promise<ControlAppEntry[]>;
+  removeControlApp(id: string): Promise<ControlAppEntry[]>;
+  launchControlApp(id: string): Promise<ControlLaunchResult>;
+  readControlClipboard(): Promise<ControlClipboardResult>;
+  captureControlScreenshot(): Promise<ControlScreenshotResult>;
+  controlWindowAction(action: ControlWindowAction['action']): Promise<ControlWindowResult>;
+  emergencyStop(): Promise<{ paused: boolean }>;
+  resumeControl(): Promise<{ paused: boolean }>;
+  onControlEvent(listener: (payload: ControlIndicatorEvent) => void): () => void;
 }

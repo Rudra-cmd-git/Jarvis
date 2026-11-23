@@ -86,10 +86,11 @@ export const PERMISSION_CATALOG: readonly PermissionDescriptor[] = [
   {
     capability: 'app.launch',
     label: 'Launch applications',
-    description: 'Allow JARVIS to open allowlisted applications.',
+    description:
+      'Allow JARVIS to open only applications you added to the PC Control allowlist. Every launch is logged.',
     risk: 'medium',
-    available: false,
-    availabilityNote: 'Planned for Phase 2 (PC control).',
+    available: true,
+    availabilityNote: 'Enforced now by the PC control launch service.',
   },
   {
     capability: 'system.exec',
@@ -102,10 +103,11 @@ export const PERMISSION_CATALOG: readonly PermissionDescriptor[] = [
   {
     capability: 'screen.capture',
     label: 'Capture the screen',
-    description: 'Allow JARVIS to read screen content for analysis.',
+    description:
+      'Allow JARVIS to capture a screenshot to local storage. A visible indicator appears while the capture runs.',
     risk: 'high',
-    available: false,
-    availabilityNote: 'Planned for Phase 3 with a visible indicator.',
+    available: true,
+    availabilityNote: 'Enforced now by the PC control screenshot service.',
   },
   {
     capability: 'microphone.record',
@@ -118,10 +120,11 @@ export const PERMISSION_CATALOG: readonly PermissionDescriptor[] = [
   {
     capability: 'clipboard.read',
     label: 'Read the clipboard',
-    description: 'Allow JARVIS to read clipboard contents.',
+    description:
+      'Allow JARVIS to read clipboard text when you request it. Clipboard contents are never logged.',
     risk: 'medium',
-    available: false,
-    availabilityNote: 'Planned for Phase 2.',
+    available: true,
+    availabilityNote: 'Enforced now by the PC control clipboard service.',
   },
   {
     capability: 'browser.automate',

@@ -18,6 +18,15 @@ import type {
   SecretStorageStatus,
   SystemMetrics,
 } from '../shared/types';
+import type {
+  ControlAppEntry,
+  ControlClipboardResult,
+  ControlIndicatorEvent,
+  ControlLaunchResult,
+  ControlScreenshotResult,
+  ControlStatus,
+  ControlWindowResult,
+} from '../shared/control';
 import type { AppSettings, SettingKey } from '../shared/settings';
 import type { PermissionCapability, PermissionOverview } from '../shared/permissions';
 import type { ProviderInput, ProviderSummary } from '../shared/providers';
@@ -86,6 +95,34 @@ const api: JarvisApi = {
     invoke<ConversationMessage>(IPC_CHANNELS.CONVERSATIONS_APPEND_MESSAGE, input),
   listConversationMessages: (id: string) =>
     invoke<ConversationMessage[]>(IPC_CHANNELS.CONVERSATIONS_LIST_MESSAGES, { id }),
+
+  getControlStatus: () => invoke<ControlStatus>(IPC_CHANNELS.CONTROL_GET_STATUS),
+  addControlApp: (entry: ControlAppEntry) =>
+    invoke<ControlAppEntry[]>(IPC_CHANNELS.CONTROL_ADD_APP, entry),
+  removeControlApp: (id: string) =>
+    invoke<ControlAppEntry[]>(IPC_CHANNELS.CONTROL_REMOVE_APP, { id }),
+  launchControlApp: (id: string) =>
+    invoke<ControlLaunchResult>(IPC_CHANNELS.CONTROL_LAUNCH_APP, { id }),
+  readControlClipboard: () =>
+    invoke<ControlClipboardResult>(IPC_CHANNELS.CONTROL_READ_CLIPBOARD),
+  captureControlScreenshot: () =>
+    invoke<ControlScreenshotResult>(IPC_CHANNELS.CONTROL_CAPTURE_SCREENSHOT),
+  controlWindowAction: (action: 'minimize' | 'maximize' | 'restore' | 'focus') =>
+    invoke<ControlWindowResult>(IPC_CHANNELS.CONTROL_WINDOW_ACTION, { action }),
+  emergencyStop: () => invoke<{ paused: boolean }>(IPC_CHANNELS.CONTROL_EMERGENCY_STOP),
+  resumeControl: () => invoke<{ paused: boolean }>(IPC_CHANNELS.CONTROL_RESUME),
+  onControlEvent: (listener: (payload: ControlIndicatorEvent) => void) => {
+    const handler = (_event: IpcRendererEvent, payload: ControlIndicatorEvent): void => {
+      if (!payload || typeof payload.kind !== 'string' || typeof payload.active !== 'boolean') {
+        return;
+      }
+      listener(payload);
+    };
+    ipcRenderer.on(IPC_CHANNELS.CONTROL_EVENT, handler);
+    return () => {
+      ipcRenderer.removeListener(IPC_CHANNELS.CONTROL_EVENT, handler);
+    };
+  },
 
   getAiStatus: () => invoke<AiStatus>(IPC_CHANNELS.AI_GET_STATUS),
   listAiModels: (providerId?: string) =>

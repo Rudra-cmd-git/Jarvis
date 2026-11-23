@@ -1,9 +1,11 @@
 import { app, BrowserWindow, session } from 'electron';
+import { ElectronControlPlatform } from './services/electron-control-platform';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { registerAiIpc } from './ipc/ai.ipc';
 import { registerActivityIpc } from './ipc/activity.ipc';
 import { registerAppIpc } from './ipc/app.ipc';
+import { registerControlIpc } from './ipc/control.ipc';
 import { registerConversationsIpc } from './ipc/conversations.ipc';
 import { registerDatabaseIpc } from './ipc/database.ipc';
 import { registerPermissionsIpc } from './ipc/permissions.ipc';
@@ -94,6 +96,7 @@ app.whenReady().then(() => {
   initializeCoreServices({
     userDataPath: app.getPath('userData'),
     cipher: new SafeStorageCipher(),
+    controlPlatform: new ElectronControlPlatform(),
   });
   registerAppIpc();
   registerSystemIpc();
@@ -105,6 +108,7 @@ app.whenReady().then(() => {
   registerActivityIpc();
   registerAiIpc();
   registerConversationsIpc();
+  registerControlIpc();
   createWindow();
 
   app.on('activate', () => {

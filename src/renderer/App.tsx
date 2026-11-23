@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { ControlProvider } from './state/control-context';
 import { CoreProvider, useCore } from './state/core-context';
 import { RuntimeProvider, useRuntime } from './state/runtime-context';
 import { Sidebar } from './components/layout/Sidebar';
@@ -49,7 +50,9 @@ export function App() {
   return (
     <RuntimeProvider>
       <CoreProvider>
-        <RuntimeShell activeView={activeView} onNavigate={setActiveView} />
+        <ControlProvider>
+          <RuntimeShell activeView={activeView} onNavigate={setActiveView} />
+        </ControlProvider>
       </CoreProvider>
     </RuntimeProvider>
   );

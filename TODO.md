@@ -98,18 +98,51 @@ Acceptance criteria: send message, see streamed response, stop generation, creat
 
 M5 verification summary: `npm run typecheck` pass; `npm run test` 99/99 pass; `npm run build` pass; `npm run verify:window` 84/84 pass; `npm run dev` launched `J.A.R.V.I.S. - Foundation`.
 
-## Phase 2 — Voice and PC Control (P3, depends on Phase 1)
+## Phase 2 — Voice and PC Control (IN PROGRESS — M1 complete)
 
-- [ ] Speech-to-text with push-to-talk and configurable language
-- [ ] Text-to-speech with voice selection and interruptible playback
-- [ ] Wake-word architecture with explicit opt-in and visible indicator
+### P2-M1 — Secure PC-control foundation (P1, COMPLETE)
+
+Acceptance criteria: privileged actions are permission-gated, allowlisted, audited and visibly indicated; emergency stop works. **All criteria verified 2026-11-23.**
+
+- [x] Enforce `app.launch`, `screen.capture`, `clipboard.read` permissions
+- [x] `ControlService` with injected Electron-free platform boundary
+- [x] Absolute-path application allowlist with real launch
+- [x] Clipboard read with no content logging
+- [x] Screenshot capture with visible indicator
+- [x] Own-window actions (minimize/maximize/restore/focus)
+- [x] Emergency stop that aborts AI streams and pauses control
+- [x] Activity log category `control` for every action
+- [x] PC Control UI with real controls and honest status
+- [x] Unit tests (19 files, 106 tests total; 7 new)
+- [x] Window verification (95 checks total; 11 new), including real Notepad launch
+- [x] Documentation updated with actual results
+
+P2-M1 verification summary: `npm run typecheck` pass; `npm run test` 106/106 pass; `npm run build` pass; `npm run verify:window` 95/95 pass; `npm run dev` launched `J.A.R.V.I.S. - Foundation`.
+
+### P2-M2 — Voice input / push-to-talk (P1, NEXT)
+
+- [ ] Enforce `microphone.record` with explicit opt-in
+- [ ] Provider-independent `SpeechToTextAdapter` interface
+- [ ] Web Speech API adapter with push-to-talk and configurable language
+- [ ] Voice settings with real effects and cloud-backend disclosure
+- [ ] Visible LISTENING indicator and auto-stop on blur
+- [ ] Transcript inserted into the Chat composer without auto-send
+- [ ] Unit tests with mocked recognition events and non-mic window checks
+
+### P2-M3 — Voice output and conversation management (P2)
+
+- [ ] Text-to-speech adapter with OS voice selection
+- [ ] Interruptible playback and speaking indicator
 - [ ] Voice/text mode switching
-- [ ] Application launch/close with allowlist and permission prompts
-- [ ] Window management
-- [ ] File/folder search and open
-- [ ] Screenshot, clipboard read (permission-gated, indicator visible)
-- [ ] Volume/display/network status and supported controls
-- [ ] Activity log entries for every privileged action
+- [ ] Stop generation also stops speech
+
+### P2-M4 — Wake-word (P2)
+
+- [ ] Explicit opt-in only, off by default
+- [ ] Configurable keyword and visible indicator
+- [ ] Activity logging and automatic stop
+
+Deferred from Phase 2 scope (require native APIs or later phases): volume control, arbitrary external-window management, file operations, screen awareness.
 
 ## Phase 3 — Intelligence (P3, depends on Phase 1/2)
 
@@ -153,6 +186,6 @@ M5 verification summary: `npm run typecheck` pass; `npm run test` 99/99 pass; `n
 | Synchronous `safeStorage` is deprecated in Electron 45 | Security/tooling | Migrate to async variants without changing `SecretCipher`; no plaintext fallback |
 | `src/renderer/App.tsx` was untracked | Git | **Resolved in the M3 commit** — now tracked and preserved |
 | Reference image not machine-readable by current model | Design | Use written brief; revisit with multimodal agent |
-| `origin/main` exists but no push after M3 | Recovery | M5 committed locally; ask before pushing |
+| `origin/main` exists but no push after M3 | Recovery | P2-M1 committed locally; ask before pushing |
 
 Do not mark an item complete until the acceptance criteria are verified and `PROJECT_STATUS.md` is updated with real results.

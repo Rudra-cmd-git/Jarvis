@@ -1,51 +1,55 @@
 # JARVIS — Project Status
 
-Last updated: 2026-11-23 (Phase 1 Milestone 5 complete)
+Last updated: 2026-11-23 (Phase 2 Milestone 1 complete)
 
 ## 1. Overall progress
 
 | Phase | Name | Status | Notes |
 | --- | --- | --- | --- |
 | 0 | Discovery & Architecture | **Complete** | Environment inspected, stack selected, docs and folder skeleton created |
-| 1 | Functional Desktop Foundation | **Complete — M1–M5 done** | Shell, telemetry, SQLite persistence, encrypted secrets, permissions, activity log, provider configuration, AI streaming adapter, and a persistent streaming chat experience |
-| 2 | Voice & PC Control | Not started | Depends on Phase 1 |
+| 1 | Functional Desktop Foundation | **Complete — M1–M5 done** | Shell, telemetry, SQLite, secrets, permissions, activity log, AI provider layer and persistent chat |
+| 2 | Voice & PC Control | **In progress — M1 complete** | Allowlisted, permission-gated Windows control with emergency stop and audit |
 | 3 | Intelligence | Not started | Depends on Phase 1/2 |
 | 4 | Automation | Not started | Depends on Phase 1 services |
 | 5 | Personal Assistant | Not started | Depends on storage/AI foundation |
 | 6 | Optimization & Release | Not started | Packaging and hardening |
 
-Current: **Phase 1 complete. Phase 2 (voice and PC control) is next.**
+Current: **Phase 2 Milestone 1 complete. Phase 2 Milestone 2 (voice input / push-to-talk) is next.**
 
 ## 2. Completed functionality
 
-### Phase 1 M1–M4 (preserved)
-- Secure Electron shell, typed preload bridge, live system telemetry and eight navigation views.
+### Phase 0 and Phase 1 (preserved)
+- Secure Electron shell, typed preload bridge, live system telemetry, eight navigation views.
 - SQLite persistence with versioned migrations, settings, encrypted secrets, permissions and activity log.
-- Provider CRUD, activation, model selection and write-only API keys.
-- Real OpenAI-compatible SSE adapter, registry/router, permission-gated streaming IPC, retry/cancellation and Settings AI diagnostic.
+- Provider CRUD, AI streaming adapter, retry/cancellation, and persistent streaming chat with Markdown rendering.
 
-### Phase 1 Milestone 5 (new)
-- **Persistent conversations** through `ConversationService`: create, rename, delete with cascade, model selection, message append/list and audit entries.
-- **Schema v2** adds `conversations.model` via an append-only migration.
-- **Streaming chat UI** in the Chat view: conversation sidebar, message bubbles, markdown rendering, code blocks with copy, composer, send/stop controls, model selector and auto-scroll.
-- **Context management**: recent-message cap (40 messages / 100,000 characters), duplicate-submission prevention and cancelled/error metadata.
-- **Persistence verified across restart**: user and assistant messages survive a real database reopen and renderer reload.
-- **Conversation management verified**: rename and delete work through IPC and the UI.
+### Phase 2 Milestone 1 (new)
+- **Enforced permissions** for `app.launch`, `screen.capture` and `clipboard.read`; unimplemented capabilities remain locked.
+- **`ControlService`** with an injected `ControlPlatform` boundary; Electron APIs isolated in `electron-control-platform.ts`.
+- **Application allowlist** for absolute Windows executable paths; real app launch verified with Notepad.
+- **Clipboard read** with length-only audit entries; contents are never logged.
+- **Screenshot capture** via `desktopCapturer` to a local screenshots folder with a visible indicator.
+- **Own-window actions** (minimize/maximize/restore/focus) for the JARVIS window only.
+- **Emergency stop** aborts AI streams, pauses all control actions, and requires explicit resume.
+- **PC Control view** with real permission grants, allowlist management, safe actions and honest status.
+- **Activity category `control`** for all privileged control actions.
+- 7 new unit tests and 11 new window-verification checks, including a real application launch.
 
 ## 3. Incomplete / not implemented
 
-- Phase 2: voice, PC control, screen awareness and file operations.
-- Phases 3–6: intelligence, automation, personal assistant, packaging and release hardening.
-- Task-based model hints and automatic model selection remain future work.
-- Native Ollama management APIs are not implemented; Ollama works through its OpenAI-compatible path.
+- Phase 2 M2: microphone input, STT adapter, push-to-talk and language settings.
+- Phase 2 M3: TTS, voice selection, interruption and voice/text mode switching.
+- Phase 2 M4: wake-word with explicit opt-in.
+- Volume control, arbitrary external-window management, file operations and screen awareness remain unimplemented and are not presented as available.
+- Phases 3–6 remain out of scope for now.
 
 ## 4. Features currently working
 
-- Real Electron window launches in development and production mode.
-- Chat creates and persists conversations, streams provider responses, stops generation, renames/deletes conversations and preserves history across restarts.
-- Markdown and code blocks render in messages; copy action is available.
-- Provider/model selection works mid-session and switches the active request.
-- All existing M1–M4 functionality remains verified.
+- Phase 1 chat, persistence, AI streaming and all M1–M4 functionality remain verified.
+- Allowlisted applications can be added, removed and launched; relative paths are rejected.
+- Clipboard text can be read after explicit permission; screenshots are saved locally after permission.
+- Emergency stop cancels active AI streams and blocks further control actions until resumed.
+- PC Control view renders real status and every control performs an actual operation.
 - Typecheck, unit tests, production build, window verification and real dev launch all pass.
 
 ## 5. Known issues and blockers
@@ -54,10 +58,10 @@ Current: **Phase 1 complete. Phase 2 (voice and PC control) is next.**
 | --- | --- | --- |
 | MSVC linker missing → Tauri/Rust unusable | Medium | Accepted; Electron selected |
 | Electron 45 deprecates synchronous `safeStorage` | Low | Accepted; async migration recorded as follow-up |
-| Reference image unreadable by this model | Low | Written design brief used; image preserved |
-| Sandboxed preload must be bundled | Medium | Handled by `npm run build:preload` |
-| No linter configured | Low | Deferred before Phase 2 |
-| No push yet | Low | M5 committed locally; ask before pushing |
+| Chromium Web Speech (planned M2) is cloud-backed | Medium | Must be disclosed in UI; adapter interface allows a local engine later |
+| Volume control and external window APIs unavailable without native modules | Medium | Deferred; no native dependency added without approval |
+| No linter configured | Low | Deferred before Phase 2 completion |
+| No push yet | Low | P2-M1 committed locally; ask before pushing |
 
 No source-code bugs are currently known.
 
@@ -66,23 +70,24 @@ No source-code bugs are currently known.
 | Test | Command | Actual result |
 | --- | --- | --- |
 | Typecheck | `npm run typecheck` | Pass — main, renderer and test configs, zero errors |
-| Unit tests | `npm run test` | Pass — 18 files, **99 tests**, 0 failed |
-| Production build | `npm run build` | Pass — main, bundled preload, renderer (CSS 24.94 kB, JS 291.03 kB) |
-| Automated window verification | `npm run verify:window` | Pass — **84 checks**, 0 failed |
+| Unit tests | `npm run test` | Pass — 19 files, **106 tests**, 0 failed |
+| Production build | `npm run build` | Pass — main, bundled preload, renderer |
+| Automated window verification | `npm run verify:window` | Pass — **95 checks**, 0 failed |
 | Real dev window launch | `npm run dev` | Pass — window title `J.A.R.V.I.S. - Foundation` |
 
-M5 unit tests cover conversation create/list/get, rename, delete with cascade, message ordering, validation, model selection and preview truncation. `verify:window` additionally covered conversation rename/delete, message persistence before and after restart, and real chat UI streaming.
+P2-M1 unit tests cover allowlist validation, permission gates, clipboard truncation and non-disclosure, window action delegation, and emergency stop/resume. Window verification additionally proved real clipboard read, real screenshot capture, real Notepad launch/cleanup, path validation rejection, emergency-stop stream cancellation and pause enforcement.
 
 ## 7. Current application state
 
 - Runnable: **Yes** (`npm run dev`)
-- Database: created on first launch at `app.getPath('userData')/jarvis.db`, schema v2
+- Database: schema v2
 - Secrets: `userData/secrets.bin`, encrypted by Electron `safeStorage`
 - AI chat: functional with persistent conversations
-- Voice / PC control / automation: **not implemented**
-- Git: M4 commit `be8c3dd` and the latest M5 commit exist locally; `origin/main` still points to M3; no push
+- PC control: allowlisted launch, clipboard read, screenshot and own-window actions
+- Voice / wake-word / automation: **not implemented**
+- Git: M5 commit `e2a3404` and the latest P2-M1 commit exist locally; `origin/main` still points to M3; no push
 - Local tooling state `.opencode/` is untracked and must not be committed
 
 ## 8. Next action
 
-Begin Phase 2 from `TODO.md`: voice and PC control. Do not start Phase 3 before Phase 2 voice/PC-control basics are verified.
+Begin Phase 2 Milestone 2 from `HANDOFF.md`: modular speech-to-text with push-to-talk, explicit microphone permission and visible indicator.

@@ -4,7 +4,7 @@ A premium, functional Windows personal AI assistant: natural conversation, voice
 
 ## Current state
 
-**Phase 1 complete (Milestone 5).** A real Electron desktop window launches with a secure shell, typed preload bridge, live system telemetry, SQLite persistence, typed settings, `safeStorage`-encrypted provider credentials, explicit permissions, an activity log, provider configuration, a real OpenAI-compatible AI adapter with SSE streaming, and a persistent streaming chat experience with Markdown rendering. Voice and PC control are intentionally not implemented yet.
+**Phase 2 Milestone 1 complete.** The Phase 1 foundation (secure shell, telemetry, SQLite, encrypted secrets, permissions, activity log, AI streaming and persistent chat) is intact. JARVIS now also has permission-gated Windows control: an application launch allowlist, clipboard read, local screenshots, own-window actions, visible indicators and an emergency stop. Voice input, TTS and wake-word are intentionally not implemented yet.
 
 ## Run and verify
 

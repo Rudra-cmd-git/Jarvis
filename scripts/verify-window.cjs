@@ -1,10 +1,12 @@
+const { execSync } = require('node:child_process');
 const fs = require('node:fs');
 const http = require('node:http');
 const os = require('node:os');
 const path = require('node:path');
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, clipboard, ipcMain } = require('electron');
 const { registerAiIpc } = require('../dist-main/main/ipc/ai.ipc.js');
 const { registerActivityIpc } = require('../dist-main/main/ipc/activity.ipc.js');
+const { registerControlIpc } = require('../dist-main/main/ipc/control.ipc.js');
 const { registerConversationsIpc } = require('../dist-main/main/ipc/conversations.ipc.js');
 const { registerAppIpc } = require('../dist-main/main/ipc/app.ipc.js');
 const { registerDatabaseIpc } = require('../dist-main/main/ipc/database.ipc.js');
@@ -19,6 +21,7 @@ const {
   shutdownCoreServices,
 } = require('../dist-main/main/services/core-services.js');
 const { SafeStorageCipher } = require('../dist-main/main/services/safe-storage-cipher.js');
+const { ElectronControlPlatform } = require('../dist-main/main/services/electron-control-platform.js');
 const { IPC_CHANNELS } = require('../dist-main/shared/ipc-channels.js');
 
 const PRELOAD = path.join(__dirname, '../dist-main/preload/index.js');
@@ -212,28 +215,38 @@ async function stopStubServer() {
 }
 
 const EXPECTED_API = [
+  'addControlApp',
   'appendConversationMessage',
   'cancelChatStream',
+  'captureControlScreenshot',
+  'controlWindowAction',
   'createConversation',
   'deleteConversation',
   'deleteSecret',
+  'emergencyStop',
   'getAiStatus',
   'getAppInfo',
+  'getControlStatus',
   'getConversation',
   'getDatabaseStatus',
   'getSecretStatus',
   'getSettings',
   'getSystemMetrics',
   'listActivity',
+  'launchControlApp',
   'listAiModels',
   'listConversationMessages',
   'listConversations',
   'listPermissions',
   'listProviders',
   'onChatStreamEvent',
+  'onControlEvent',
   'quitApp',
+  'readControlClipboard',
+  'removeControlApp',
   'removeProvider',
   'renameConversation',
+  'resumeControl',
   'resetSetting',
   'saveProvider',
   'setActiveProvider',
@@ -250,6 +263,7 @@ app.whenReady().then(async () => {
   const coreStatus = initializeCoreServices({
     userDataPath: USER_DATA,
     cipher: new SafeStorageCipher(),
+    controlPlatform: new ElectronControlPlatform(),
   });
 
   registerAppIpc();
@@ -262,6 +276,7 @@ app.whenReady().then(async () => {
   registerActivityIpc();
   registerAiIpc();
   registerConversationsIpc();
+  registerControlIpc();
 
   const window = new BrowserWindow({
     width: 1280,
@@ -384,6 +399,7 @@ app.whenReady().then(async () => {
     const restarted = initializeCoreServices({
       userDataPath: USER_DATA,
       cipher: new SafeStorageCipher(),
+    controlPlatform: new ElectronControlPlatform(),
     });
     check(
       'database reopens cleanly after shutdown',
@@ -881,6 +897,7 @@ app.whenReady().then(async () => {
     const reopened = initializeCoreServices({
       userDataPath: USER_DATA,
       cipher: new SafeStorageCipher(),
+    controlPlatform: new ElectronControlPlatform(),
     });
     check(
       'database reopens for conversation persistence',
@@ -905,6 +922,120 @@ app.whenReady().then(async () => {
       window,
       `window.jarvis.deleteConversation(${JSON.stringify(persistenceConversation.id)})`,
     );
+
+    // ---------- Phase 2 M1: permission-gated PC control ----------
+
+    const controlStatus = await runJavaScript(window, 'window.jarvis.getControlStatus()');
+    check(
+      'control status reports real capabilities',
+      controlStatus.paused === false &&
+        controlStatus.capabilities.some((entry) => entry.id === 'app.launch') &&
+        controlStatus.allowlistCount === 0,
+      { paused: controlStatus.paused, count: controlStatus.allowlistCount },
+    );
+
+    const controlDenied = await tryApi(window, 'window.jarvis.readControlClipboard()');
+    check(
+      'clipboard access requires permission',
+      controlDenied.ok === false && controlDenied.error.includes('permission'),
+      controlDenied,
+    );
+
+    await runJavaScript(window, "window.jarvis.setPermission('clipboard.read', 'grant')");
+    await clipboard.writeText('verify-clipboard-secret-not-logged');
+    const clipboardResult = await runJavaScript(window, 'window.jarvis.readControlClipboard()');
+    check(
+      'clipboard text is returned but not logged',
+      clipboardResult.text === 'verify-clipboard-secret-not-logged',
+      { length: clipboardResult.length, truncated: clipboardResult.truncated },
+    );
+    const controlActivity = await runJavaScript(
+      window,
+      "window.jarvis.listActivity({ category: 'control' })",
+    );
+    check(
+      'control activity does not contain clipboard contents',
+      controlActivity.length > 0 &&
+        !JSON.stringify(controlActivity).includes('verify-clipboard-secret-not-logged'),
+      controlActivity.map((entry) => entry.action),
+    );
+
+    await runJavaScript(window, "window.jarvis.setPermission('screen.capture', 'grant')");
+    const screenshot = await runJavaScript(window, 'window.jarvis.captureControlScreenshot()');
+    check(
+      'screenshot is captured to local storage',
+      screenshot.bytes > 0 && fs.existsSync(screenshot.filePath),
+      { bytes: screenshot.bytes, path: screenshot.filePath },
+    );
+
+    const badApp = await tryApi(
+      window,
+      "window.jarvis.addControlApp({ id: 'bad', name: 'Bad', path: 'relative.exe', enabled: true })",
+    );
+    check('relative application paths are rejected', badApp.ok === false, badApp);
+
+    const notepadPath = 'C:\\Windows\\System32\\notepad.exe';
+    if (fs.existsSync(notepadPath)) {
+      try {
+        execSync('taskkill /IM notepad.exe /F', { stdio: 'ignore' });
+      } catch {
+        // Notepad was not running; nothing to clean up.
+      }
+      const added = await runJavaScript(
+        window,
+        `window.jarvis.addControlApp(${JSON.stringify({
+          id: 'notepad',
+          name: 'Notepad',
+          path: notepadPath,
+          enabled: true,
+        })})`,
+      );
+      check('application allowlist accepts an absolute path', added.length === 1, added.length);
+
+      await runJavaScript(window, "window.jarvis.setPermission('app.launch', 'grant')");
+      const launched = await runJavaScript(window, "window.jarvis.launchControlApp('notepad')");
+      await wait(600);
+      let processList = '';
+      try {
+        processList = execSync('tasklist /FI "IMAGENAME eq notepad.exe"').toString();
+      } catch {
+        processList = '';
+      }
+      check(
+        'allowlisted application launches through the control service',
+        launched.launched === true && processList.toLowerCase().includes('notepad.exe'),
+        { launched: launched.launched, processFound: processList.toLowerCase().includes('notepad.exe') },
+      );
+      try {
+        execSync('taskkill /IM notepad.exe /F', { stdio: 'ignore' });
+      } catch {
+        // Cleanup is best effort.
+      }
+      await runJavaScript(window, "window.jarvis.removeControlApp('notepad')");
+    } else {
+      check('allowlisted application launches through the control service', false, 'notepad.exe not found');
+    }
+
+    await runJavaScript(
+      window,
+      "(() => { window.__aiEvents = []; window.__aiUnsub = window.jarvis.onChatStreamEvent((payload) => window.__aiEvents.push(payload)); return true; })()",
+    );
+    await runJavaScript(
+      window,
+      "window.jarvis.startChatStream('req-emergency-001', {messages:[{role:'user',content:'stop me'}], model:'slow-model'})",
+    );
+    await waitFor(window, "window.__aiEvents.some((entry) => entry.event.type === 'start')", 5000, 'stream before emergency stop');
+    const stopped = await runJavaScript(window, 'window.jarvis.emergencyStop()');
+    await waitFor(window, "window.__aiEvents.some((entry) => entry.event.type === 'cancelled')", 5000, 'emergency stop cancellation');
+    check(
+      'emergency stop pauses control and cancels streams',
+      stopped.paused === true &&
+        (await runJavaScript(window, 'window.jarvis.getControlStatus()')).paused === true,
+      stopped,
+    );
+    const blockedAfterStop = await tryApi(window, 'window.jarvis.readControlClipboard()');
+    check('paused control blocks privileged actions', blockedAfterStop.ok === false, blockedAfterStop);
+    await runJavaScript(window, 'window.jarvis.resumeControl()');
 
     await runJavaScript(window, 'window.__aiUnsub ? window.__aiUnsub() : true');
 
@@ -969,6 +1100,19 @@ app.whenReady().then(async () => {
       await runJavaScript(window, "document.querySelectorAll('[data-testid=\"activity-list\"] .activity-entry').length > 0"),
       'activity rows',
     );
+
+    await runJavaScript(window, "document.querySelector('[data-view=\"pc-control\"]').click()");
+    await waitFor(window, "document.querySelector('[data-view-heading=\"pc-control\"]') !== null", 5000, 'pc control view');
+    check(
+      'PC Control view renders real control status',
+      await runJavaScript(
+        window,
+        "document.body.textContent.includes('Emergency stop') && document.body.textContent.includes('Application allowlist') && document.body.textContent.includes('Forbidden by design')",
+      ),
+      'pc control UI',
+    );
+    await runJavaScript(window, "document.querySelector('[data-view=\"settings\"]').click()");
+    await waitFor(window, "document.querySelector('[data-view-heading=\"settings\"]') !== null", 5000, 'settings return from pc control');
 
     check(
       'AI panel renders real runtime status',

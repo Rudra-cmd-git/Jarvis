@@ -140,7 +140,8 @@ All commands above except `lint` were executed successfully in M1. See `PROJECT_
 ## 9. Phase boundaries
 
 Phase 0 (complete): discovery, architecture, docs, folder skeleton.
-Phase 1 (current): functional desktop foundation. M1, M2, M3, M4 and M5 are complete; Phase 1 is complete and Phase 2 (voice and PC control) is next.
+Phase 1 (complete): functional desktop foundation, M1–M5 verified.
+Phase 2 (current): voice and PC control. M1 (secure PC-control foundation) is complete; M2 (voice input / push-to-talk) is next.
 Phase 2: voice + PC control. Phase 3: intelligence. Phase 4: automation. Phase 5: personal assistant. Phase 6: optimization/release.
 
 Do not start a later phase while an earlier milestone is unverified.
@@ -179,3 +180,14 @@ Do not start a later phase while an earlier milestone is unverified.
 - Markdown rendering is presentational only; it must not execute scripts or fetch remote resources. Links open in the system browser after confirmation in later phases.
 - Conversation deletion cascades to messages and requires confirmation.
 - Restart persistence is verified with a real database reopen and renderer reload.
+
+## 13. Phase 2 M1 control rules (implemented)
+
+- All OS interaction goes through `ControlService` and an injected `ControlPlatform`; Electron APIs live only in `electron-control-platform.ts`.
+- Only `app.launch`, `clipboard.read`, `screen.capture`, and own-window actions are enforced today. `microphone.record` stays locked until voice input exists.
+- Applications can launch only from a user-managed allowlist of absolute Windows paths. No unrestricted shell execution is permitted.
+- Clipboard contents are never written to the activity log; only the length is recorded.
+- Emergency stop aborts AI streams, pauses all control actions, and requires an explicit resume.
+- Consequential UI actions (allowlist removal, emergency stop) require confirmation or are clearly visible.
+- Screenshot and clipboard actions emit visible indicators to the originating renderer and the status bar.
+- Volume control, arbitrary external-window management, and file operations are not implemented and must not be presented as available.
