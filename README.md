@@ -4,7 +4,7 @@ A premium, functional Windows personal AI assistant: natural conversation, voice
 
 ## Current state
 
-**Phase 1 Milestone 1 complete.** A real Electron desktop window launches with a secure shell, typed preload bridge, and a premium dashboard foundation showing live runtime diagnostics. AI providers, voice, database, and PC control are intentionally not implemented yet.
+**Phase 1 Milestone 3 complete.** A real Electron desktop window launches with a secure shell, typed preload bridge, live system telemetry, SQLite persistence, typed settings, `safeStorage`-encrypted provider credentials, explicit permissions, an activity log, and a functional provider configuration UI. AI network adapters, streaming chat, voice, and PC control are intentionally not implemented yet.
 
 ## Run and verify
 
@@ -32,11 +32,11 @@ New AI models: follow the takeover protocol at the top of `AGENTS.md` before cha
 
 ## Technology stack
 
-Electron 45.4.1 + React 19.3.1 + TypeScript 5.9.3 + Vite 8.3.8, with SQLite behind an abstraction, secrets to be encrypted with Electron `safeStorage`, and Vitest for unit tests. The preload is bundled into one CommonJS file for sandbox compatibility. Tauri was evaluated and rejected because this machine lacks a native linker; see `ARCHITECTURE.md`.
+Electron 45.4.1 + React 19.3.1 + TypeScript 5.9.3 + Vite 8.3.8, with SQLite (`node:sqlite`) behind `DatabaseService`, secrets encrypted with Electron `safeStorage`, and Vitest for unit tests. The preload is bundled into one CommonJS file for sandbox compatibility. Tauri was evaluated and rejected because this machine lacks a native linker; see `ARCHITECTURE.md`.
 
 ## Security note
 
-No API keys are stored in this repository. Provider credentials must be entered by the user at runtime and encrypted locally. PC control, screen capture, clipboard access, and consequential actions will require explicit permission and will be logged.
+No API keys are stored in this repository. Provider credentials are entered at runtime, encrypted locally with Electron `safeStorage`, and never returned to the renderer. Credential writes require the `credentials.manage` permission. PC control, screen capture, clipboard access, and consequential actions will also require explicit permission and will be logged.
 
 ## Reference asset
 

@@ -1,16 +1,23 @@
 import { useState } from 'react';
-import { EmptyState } from '../components/common/EmptyState';
-import { PageHeader } from '../components/common/PageHeader';
-import { Panel } from '../components/common/Panel';
 import { Button } from '../components/common/Button';
 import { DataRow } from '../components/common/DataRow';
-
+import { ErrorState } from '../components/common/ErrorState';
+import { LoadingState } from '../components/common/LoadingState';
+import { PageHeader } from '../components/common/PageHeader';
+import { Panel } from '../components/common/Panel';
+import { AppearancePanel } from '../components/settings/AppearancePanel';
+import { ActivityPanel } from '../components/settings/ActivityPanel';
+import { PermissionsPanel } from '../components/settings/PermissionsPanel';
+import { ProvidersPanel } from '../components/settings/ProvidersPanel';
+import { StoragePanel } from '../components/settings/StoragePanel';
+import { useCore } from '../state/core-context';
 import { useRuntime } from '../state/runtime-context';
 import { formatDateTime } from '../../shared/format';
 import type { ViewId } from '../../shared/types';
 
 export function SettingsView({ onNavigate }: { onNavigate: (view: ViewId) => void }) {
-  const { appInfo, error, refreshing, refresh, lastLoadedAt } = useRuntime();
+  const { appInfo, error: runtimeError, refreshing, refresh, lastLoadedAt } = useRuntime();
+  const { loading, error, refresh: refreshCore } = useCore();
   const [quitPending, setQuitPending] = useState(false);
   const [actionNote, setActionNote] = useState<string | null>(null);
 
@@ -28,19 +35,42 @@ export function SettingsView({ onNavigate }: { onNavigate: (view: ViewId) => voi
     }
   };
 
+  const refreshAll = async () => {
+    await Promise.all([refresh(), refreshCore()]);
+  };
+
   return (
     <main className="view" data-view="settings">
       <PageHeader
         viewId="settings"
-        eyebrow="RUNTIME & SECURITY"
+        eyebrow="RUNTIME, STORAGE & SECURITY"
         title="Settings"
-        subtitle="Read-only runtime diagnostics and security baseline. Persistent settings arrive in Milestone 3."
+        subtitle="Persistent configuration backed by SQLite, encrypted credentials, explicit permissions, and a real activity trail."
         actions={
-          <Button variant="primary" onClick={() => void refresh()} disabled={refreshing}>
-            {refreshing ? 'Refreshing…' : 'Refresh diagnostics'}
+          <Button variant="primary" onClick={() => void refreshAll()} disabled={refreshing || loading}>
+            {refreshing || loading ? 'Refreshing…' : 'Refresh all'}
           </Button>
         }
       />
+
+      {error && (
+        <ErrorState
+          title="Core services unavailable"
+          message={error}
+          onRetry={() => void refreshCore()}
+        />
+      )}
+
+      {loading && !error && <LoadingState label="core-status" rows={3} />}
+
+      <section className="grid grid--2">
+        <StoragePanel />
+        <AppearancePanel />
+      </section>
+
+      <ProvidersPanel />
+      <PermissionsPanel />
+      <ActivityPanel />
 
       <section className="grid grid--2">
         <Panel title="Runtime" eyebrow="VERIFIED DATA">
@@ -52,7 +82,7 @@ export function SettingsView({ onNavigate }: { onNavigate: (view: ViewId) => voi
           <DataRow label="Build mode" value={appInfo ? (appInfo.isPackaged ? 'Packaged' : 'Development') : '—'} />
           <DataRow label="SQLite" value={appInfo?.sqliteAvailable ? 'Available' : 'Unavailable'} tone={appInfo?.sqliteAvailable ? 'good' : 'warn'} />
           <DataRow label="Last loaded" value={lastLoadedAt ? formatDateTime(lastLoadedAt) : 'Never'} />
-          <DataRow label="Bridge status" value={error ? 'Error' : 'Online'} tone={error ? 'danger' : 'good'} />
+          <DataRow label="Bridge status" value={runtimeError ? 'Error' : 'Online'} tone={runtimeError ? 'danger' : 'good'} />
         </Panel>
 
         <Panel title="Security baseline" eyebrow="ENFORCED IN MAIN PROCESS">
@@ -60,19 +90,19 @@ export function SettingsView({ onNavigate }: { onNavigate: (view: ViewId) => voi
           <DataRow label="sandbox" value="Enabled" tone="good" />
           <DataRow label="nodeIntegration" value="Disabled" tone="good" />
           <DataRow label="IPC channel allowlist" value="Enforced" tone="good" />
-          <DataRow label="IPC argument validation" value="Enforced (new handlers)" tone="good" />
+          <DataRow label="IPC argument validation" value="Enforced on all new handlers" tone="good" />
           <DataRow label="Content Security Policy" value="Configured in main process" tone="good" />
-          <DataRow label="Secrets storage" value="Not implemented (M3)" tone="warn" />
-          <DataRow label="Permission prompts" value="Not implemented (M3)" tone="warn" />
-          <DataRow label="Activity log" value="Not implemented (M3)" tone="warn" />
+          <DataRow label="Secrets storage" value="Encrypted with safeStorage" tone="good" />
+          <DataRow label="Permission checks" value="Enforced for credential writes" tone="good" />
+          <DataRow label="Activity log" value="Persisted in SQLite" tone="good" />
         </Panel>
       </section>
 
       <Panel title="Application controls" eyebrow="REAL ACTIONS">
         <div className="action-grid">
-          <button className="action-tile" type="button" onClick={() => void refresh()} disabled={refreshing} data-quick-action="refresh-runtime">
-            <strong>Refresh diagnostics</strong>
-            <span>Re-read runtime and bridge state.</span>
+          <button className="action-tile" type="button" onClick={() => void refreshAll()} disabled={refreshing || loading} data-quick-action="refresh-runtime">
+            <strong>Refresh everything</strong>
+            <span>Re-read runtime, storage, providers, permissions and activity.</span>
           </button>
           <button className="action-tile" type="button" onClick={() => onNavigate('dashboard')} data-quick-action="open-dashboard">
             <strong>Open dashboard</strong>
@@ -91,13 +121,6 @@ export function SettingsView({ onNavigate }: { onNavigate: (view: ViewId) => voi
         </div>
         {actionNote && <p className="metric-card-detail">{actionNote}</p>}
       </Panel>
-
-      <EmptyState
-        title="Persistent settings are not available yet"
-        description="Theme, provider configuration, shortcuts and automation preferences will be stored and encrypted in Milestone 3."
-        meta="Planned: M3 settings and secrets"
-        testId="settings"
-      />
     </main>
   );
 }

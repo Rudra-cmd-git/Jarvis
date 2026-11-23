@@ -140,7 +140,19 @@ All commands above except `lint` were executed successfully in M1. See `PROJECT_
 ## 9. Phase boundaries
 
 Phase 0 (complete): discovery, architecture, docs, folder skeleton.
-Phase 1 (current): functional desktop foundation. M1 and M2 are complete; M3 settings/storage/secrets is next.
+Phase 1 (current): functional desktop foundation. M1, M2 and M3 are complete; M4 AI provider layer is next.
 Phase 2: voice + PC control. Phase 3: intelligence. Phase 4: automation. Phase 5: personal assistant. Phase 6: optimization/release.
 
 Do not start a later phase while an earlier milestone is unverified.
+
+## 10. M3 storage and security rules (implemented)
+
+- Main-process services must not import `electron` unless the file is explicitly Electron-specific. Electron APIs are isolated in `safe-storage-cipher.ts`; core services are unit-testable under Node.
+- All database access goes through `DatabaseService`; migrations are append-only and transactional. Never edit an applied migration.
+- Settings are typed, validated against `src/shared/settings.ts`, and persisted in SQLite. A setting without a real UI effect is not added.
+- Secrets live only in `userData/secrets.bin` encrypted by Electron `safeStorage`. They are never stored in SQLite, never returned to the renderer, never logged, and never written in plaintext. If `safeStorage` is unavailable, saving fails explicitly with no fallback.
+- Provider credentials use the reference `provider:<providerId>`. Provider summaries expose only `credentialState`.
+- Credential writes require the `credentials.manage` permission. Capabilities that are not enforced yet are listed but cannot be granted.
+- Every privileged operation writes an activity entry; details are redacted for recognizable key patterns and length-capped.
+- `tsconfig.test.json` includes main services/utils and excludes `safe-storage-cipher.ts` (Electron-only).
+- Electron 45 deprecates the synchronous `safeStorage` API. M3 intentionally uses `isEncryptionAvailable()` / `encryptString()` / `decryptString()`; migrating to the async variants is a recorded follow-up, not a reason to add a plaintext fallback.

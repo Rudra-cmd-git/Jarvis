@@ -12,7 +12,7 @@ Priority: P0 = blocks current phase, P1 = next milestone, P2 = later in phase, P
 - [x] Initialize Git repository (no commit)
 - [x] Define Phase 1 milestones and acceptance criteria
 
-## Phase 1 — Functional Desktop Foundation (IN PROGRESS — M2 complete)
+## Phase 1 — Functional Desktop Foundation (IN PROGRESS — M3 complete)
 
 ### M1 — Scaffold and prove the shell (P0, COMPLETE)
 
@@ -39,18 +39,29 @@ Acceptance criteria: all eight navigation destinations open, active state is cle
 - [x] Quick actions wired to real handlers (navigation, telemetry refresh, diagnostics refresh, confirmed quit)
 - [x] Recent conversations, automations and tasks shown as truthful empty states until storage exists
 
-### M3 — Settings, secrets, and persistence (P1, depends on M1)
+### M3 — Settings, secrets, and persistence (P1, COMPLETE)
 
-Acceptance criteria: settings survive restart; provider keys are encrypted at rest; conversations persist; no key ever appears in source, logs, or renderer memory longer than needed.
+Acceptance criteria: settings survive restart; provider keys are encrypted at rest; provider configuration persists; no key ever appears in source, logs, or renderer memory longer than needed. **All criteria verified 2026-11-23.**
 
 - [x] Verify `node:sqlite` inside Electron — available in Electron 45.4.1 / Node 24.22.3
-- [ ] `DatabaseService` with versioned migrations
-- [ ] `SettingsService` with typed defaults and change events
-- [ ] `SecretsService` using `safeStorage`
-- [ ] `ActivityLogService` and `PermissionsService` interfaces + basic UI
-- [ ] Provider configuration UI (base URL, model list, enable/disable, priority)
+- [x] `DatabaseService` with versioned, transactional migrations and migration history
+- [x] Schema v1: settings, provider_configs, permissions, activity_log, conversations, messages
+- [x] `SettingsService` with typed defaults, validation, persistence and reset
+- [x] `SecretsService` using `safeStorage`, atomic encrypted writes, no plaintext fallback
+- [x] `ActivityLogService` with filtering and credential redaction
+- [x] `PermissionsService` with grant/deny/revoke, persistence and enforcement
+- [x] Strict IPC validation and typed preload methods for all M3 domains
+- [x] Provider configuration UI (presets, base URL, model list, enable/disable, priority, write-only key)
+- [x] Settings UI: database/migration status, appearance toggles, permissions, activity log
+- [x] Unit tests (11 files, 64 tests) and 58-check real-window verification
+- [x] Simulated restart persistence and plaintext-absence assertions
+- [x] Documentation updated with actual results
 
-### M4 — AI provider layer (P2, depends on M3)
+M3 verification summary: `npm run typecheck` pass; `npm run test` 64/64 pass; `npm run build` pass; `npm run verify:window` 58/58 pass; `npm run dev` launched `J.A.R.V.I.S. - Foundation`.
+
+Deferred follow-up: migrate synchronous `safeStorage` calls to Electron 45 async variants without changing the `SecretCipher` boundary.
+
+### M4 — AI provider layer (P1, NEXT, depends on M3)
 
 Acceptance criteria: at least one real provider responds to a streamed message; switching provider/model works without code changes; cancellation stops the stream; errors are normalized.
 
@@ -121,9 +132,11 @@ Acceptance criteria: send message, see streamed response, stop generation, creat
 | --- | --- | --- |
 | Tauri unavailable (no MSVC linker) | Environment | Accepted; revisit only with approval |
 | ~~`node:sqlite` inside Electron unverified~~ | Technical | **Resolved in M1** — available and queried successfully |
-| No linter/formatter configured yet | Tooling | Deferred; add in M2 if time permits |
+| No linter/formatter configured yet | Tooling | Deferred; add before Phase 2 |
 | No E2E tests yet | Testing | Add once UI exists (Phase 6 or earlier) |
+| Synchronous `safeStorage` is deprecated in Electron 45 | Security/tooling | Migrate to async variants without changing `SecretCipher`; no plaintext fallback |
+| `src/renderer/App.tsx` was untracked | Git | **Resolved in the M3 commit** — now tracked and preserved |
 | Reference image not machine-readable by current model | Design | Use written brief; revisit with multimodal agent |
-| No commits yet | Recovery | Ask user before first commit |
+| No remote/push yet | Recovery | Local M2/M3 commits exist; ask before pushing |
 
 Do not mark an item complete until the acceptance criteria are verified and `PROJECT_STATUS.md` is updated with real results.

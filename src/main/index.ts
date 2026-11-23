@@ -1,8 +1,16 @@
 import { app, BrowserWindow, session } from 'electron';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { registerActivityIpc } from './ipc/activity.ipc';
 import { registerAppIpc } from './ipc/app.ipc';
+import { registerDatabaseIpc } from './ipc/database.ipc';
+import { registerPermissionsIpc } from './ipc/permissions.ipc';
+import { registerProvidersIpc } from './ipc/providers.ipc';
+import { registerSecretsIpc } from './ipc/secrets.ipc';
+import { registerSettingsIpc } from './ipc/settings.ipc';
 import { registerSystemIpc } from './ipc/system.ipc';
+import { initializeCoreServices, shutdownCoreServices } from './services/core-services';
+import { SafeStorageCipher } from './services/safe-storage-cipher';
 
 const isDev = process.env.NODE_ENV === 'development';
 const DEV_URL = 'http://127.0.0.1:5173/';
@@ -81,8 +89,18 @@ function createWindow(): void {
 
 app.whenReady().then(() => {
   applyContentSecurityPolicy();
+  initializeCoreServices({
+    userDataPath: app.getPath('userData'),
+    cipher: new SafeStorageCipher(),
+  });
   registerAppIpc();
   registerSystemIpc();
+  registerDatabaseIpc();
+  registerSettingsIpc();
+  registerSecretsIpc();
+  registerProvidersIpc();
+  registerPermissionsIpc();
+  registerActivityIpc();
   createWindow();
 
   app.on('activate', () => {
@@ -96,4 +114,8 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit();
   }
+});
+
+app.on('will-quit', () => {
+  shutdownCoreServices();
 });

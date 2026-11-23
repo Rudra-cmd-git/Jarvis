@@ -73,15 +73,22 @@ Measured on 2026-11-22:
 ### Main — services (`src/main/services`)
 - `app-info.service.ts` — verified runtime diagnostics.
 - `system-monitor.service.ts` — real CPU, memory, storage and process telemetry using Node `os`, `process` and `fs.statfs`.
-- `database.ts` — owns DB connection, migrations, and repositories. All SQL lives here (M3).
-- `settings.service.ts` — typed settings with defaults and change events (M3).
-- `secrets.service.ts` — `safeStorage` encryption/decryption of provider keys; never logs values (M3).
-- `permissions.service.ts` — capability prompts, one-time/session/always grants, revocation (M3).
-- `activity-log.service.ts` — append-only audit trail for privileged actions (M3).
+- `database.service.ts` — owns the `node:sqlite` `DatabaseSync` connection, status, transactions and clean shutdown.
+- `migrations.ts` — append-only, versioned schema migrations with a recorded migration history.
+- `core-services.ts` — composition root; initializes the database and every M3 service, exposes core status, and shuts the database down on quit.
+- `settings.service.ts` — typed settings with documented defaults, validation, persistence and reset.
+- `secret-cipher.ts` — cipher boundary plus typed secret errors; keeps Electron out of testable services.
+- `safe-storage-cipher.ts` — Electron-only `safeStorage` adapter.
+- `secrets.service.ts` — encrypted file store (`userData/secrets.bin`), atomic writes, no plaintext fallback, no renderer getter.
+- `permissions.service.ts` — capability decisions (`granted` / `denied` / `unset`), enforcement helper and audit logging.
+- `activity-log.service.ts` — append-only audit trail with category/severity/outcome filtering and redaction.
+- `providers.service.ts` — provider CRUD, activation, model normalization and credential-state reporting.
 - `ai/` — provider abstraction described below (M4).
 
 ### Main — IPC guards (`src/main/utils`)
-- `ipc-guard.ts` — trusted renderer origin checks and argument validation for every IPC handler.
+- `ipc-guard.ts` — trusted renderer origin checks.
+- `validation.ts` — strict record/string/number/enum/array validators used by every M3 handler.
+- `redact.ts` — defense-in-depth credential redaction for activity details.
 
 ### Planned later services
 Voice engine (STT/TTS/wake-word), Windows system control, screen capture/OCR, browser automation, file intelligence, developer tools, workflow engine, plugin/MCP host, productivity.
@@ -96,8 +103,10 @@ Voice engine (STT/TTS/wake-word), Windows system control, screen capture/OCR, br
 5. Renderer appends chunks to the current message; final message and conversation are persisted through `ConversationService`.
 6. Errors are normalized to `{ code, message, retryable }`; no raw keys or stack traces reach renderer.
 
-**Privileged action flow (planned):**
-Request → PermissionService evaluates grant → prompt if needed → ActivityLog record → action executed via dedicated service → result event.
+**Privileged action flow (implemented for credential writes):**
+Renderer invokes `secrets:set` → preload forwards to the allowlisted channel → main validates sender and arguments → `PermissionsService.require('credentials.manage')` → `SecretsService` encrypts with `safeStorage` and writes atomically → `ActivityLogService` records the outcome (redacted) → renderer receives only `SecretStorageStatus`, never the key.
+
+The same order applies to future privileged capabilities: validate, check permission, execute through a dedicated service, log, then return a non-secret result.
 
 ## 5. Important interfaces (planned)
 
@@ -125,24 +134,50 @@ export interface ChatChunk {
   error?: NormalizedError;
 }
 
-export interface PermissionRequest {
-  capability: 'files.read' | 'files.delete' | 'system.exec' | 'screen.capture'
-    | 'clipboard.read' | 'network.request' | 'browser.submit' | string;
-  reason: string;
-  target?: string;
-  destructive?: boolean;
+export type PermissionCapability =
+  | 'credentials.manage'
+  | 'network.request'
+  | 'files.read'
+  | 'files.write'
+  | 'files.delete'
+  | 'app.launch'
+  | 'system.exec'
+  | 'screen.capture'
+  | 'microphone.record'
+  | 'clipboard.read'
+  | 'browser.automate'
+  | 'automation.run';
+
+export type PermissionState = 'granted' | 'denied' | 'unset';
+
+export interface PermissionDescriptor {
+  capability: PermissionCapability;
+  label: string;
+  description: string;
+  risk: 'low' | 'medium' | 'high';
+  available: boolean; // true only when code enforces it today
+  availabilityNote: string;
 }
 
 export interface ActivityEntry {
   id: string;
   timestamp: number;
-  source: 'user' | 'assistant' | 'automation' | 'plugin';
+  category: 'app' | 'database' | 'settings' | 'provider' | 'permission' | 'security';
+  severity: 'info' | 'warning' | 'error';
   action: string;
-  target?: string;
-  outcome: 'allowed' | 'denied' | 'success' | 'failure';
-  detail?: string;
+  outcome: 'success' | 'failure' | 'allowed' | 'denied' | 'info';
+  detail: string | null;
+}
+
+export interface SecretCipher {
+  readonly backend: string;
+  isAvailable(): boolean;
+  encrypt(plaintext: string): Buffer;
+  decrypt(ciphertext: Buffer): string;
 }
 ```
+
+`AiProvider`, `ChatRequest` and `ChatChunk` above remain planned for M4. M3 deliberately does not implement network calls.
 
 ## 6. AI provider integration design
 
@@ -155,37 +190,40 @@ export interface ActivityEntry {
 - API keys are supplied at runtime through UI settings and stored encrypted. Built-in free endpoints may be offered as *configurations*, never as embedded credentials.
 - Streaming, cancellation, retries with backoff, and normalized errors belong in adapters/router, not the UI.
 
-## 7. Database structure (planned)
+## 7. Database structure (schema v1, implemented)
 
 All paths under Electron `app.getPath('userData')`.
 
 ```
-jarvis.db (SQLite)
-├── conversations(id, title, created_at, updated_at, pinned, archived)
-├── messages(id, conversation_id, role, content, created_at, token_count, metadata_json)
-├── settings(key PRIMARY KEY, value_json)
-├── memory_items(id, scope, key, value, created_at, updated_at, enabled)
-├── permissions(id, capability, target_pattern, decision, granted_at, expires_at)
-├── activity_log(id, timestamp, source, action, target, outcome, detail)
-├── provider_configs(id, name, protocol, base_url, model_ids_json, enabled, priority)
-├── automations(id, name, enabled, trigger_json, conditions_json, actions_json, created_at)
-├── workflow_runs(id, automation_id, started_at, finished_at, status, error)
-├── tasks(id, title, notes, due_at, status, created_at, completed_at)
-├── reminders(id, message, due_at, status, created_at)
-├── app_usage(id, app_name, started_at, ended_at)
-└── plugins(id, name, version, enabled, manifest_json, installed_at)
+jarvis.db (SQLite, WAL)
+├── schema_migrations(version PRIMARY KEY, name, applied_at)
+├── settings(key PRIMARY KEY, value_json, updated_at)
+├── provider_configs(id PRIMARY KEY, name, protocol, base_url, model_ids_json,
+│                    enabled, priority, created_at, updated_at)
+├── permissions(capability PRIMARY KEY, decision, updated_at)
+├── activity_log(id PRIMARY KEY, timestamp, category, severity, action, outcome, detail)
+│   └── indexes on timestamp, category, severity
+├── conversations(id PRIMARY KEY, title, created_at, updated_at, pinned, archived)
+└── messages(id PRIMARY KEY, conversation_id, role, content, created_at,
+             token_count, metadata_json, FOREIGN KEY conversation_id)
+    └── index on (conversation_id, created_at)
 ```
 
-Secrets are **not** stored in SQLite: provider keys live in a `safeStorage`-encrypted file (`secrets.bin`) with only opaque IDs referenced from `provider_configs`. Migrations are versioned and applied idempotently at startup.
+`conversations` and `messages` are created in v1 so M4/M5 can persist history without a destructive migration. Memory, automation, task, reminder, app-usage and plugin tables are still planned.
+
+Secrets are **not** stored in SQLite: provider keys live in a `safeStorage`-encrypted file (`secrets.bin`) with opaque `provider:<id>` references. The file is written atomically through a temporary file and never contains plaintext. Migrations are append-only, validated as contiguous, applied inside `BEGIN IMMEDIATE`, and recorded in `schema_migrations`; a database newer than the application refuses to open.
 
 ## 8. Security design
 
 - BrowserWindow: `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`, `webSecurity: true`.
 - Navigation is locked to local app origin; external links open in the OS browser after confirmation.
-- IPC channel allowlist plus per-handler argument validation (Zod or equivalent planned).
-- Every privileged capability is permission-gated and logged.
-- Emergency stop cancels active streams, pauses automations, and revokes session grants.
+- IPC channel allowlist plus strict per-handler argument validation (`src/main/utils/validation.ts`); unexpected fields and arguments are rejected.
+- Every privileged capability is permission-gated and logged. M3 enforces `credentials.manage`; capabilities that are not implemented are visible but cannot be granted.
+- Provider API keys never cross the preload bridge in the read direction. The renderer can only set/delete a key and read an aggregate status.
+- Activity details are redacted for `sk-...`, `Bearer ...`, and `api_key=...` patterns and capped in length.
+- Emergency stop cancels active streams, pauses automations, and revokes session grants (Phase 2/4).
 - Screen/microphone indicators are UI-visible whenever capture or listening is active.
+- Electron 45 deprecates synchronous `safeStorage`; M3 uses the synchronous API by requirement. Follow-up: migrate to `isAsyncEncryptionAvailable` / `encryptStringAsync` / `decryptStringAsync` without changing the `SecretCipher` boundary.
 
 ## 9. Architectural decisions log
 
@@ -197,6 +235,10 @@ Secrets are **not** stored in SQLite: provider keys live in a `safeStorage`-encr
 | ADR-004 | OpenAI-compatible adapter first | One adapter unlocks many providers and offline Ollama | 2026-11-22 |
 | ADR-005 | CSS/canvas animation, no animation framework | Visual quality without bundle/runtime cost | 2026-11-22 |
 | ADR-006 | Git initialized, no commit yet | Recovery foundation; commits require user approval | 2026-11-22 |
+| ADR-007 | Append-only transactional migrations recorded in `schema_migrations` | Safe upgrades, idempotent startup, recoverable failures | 2026-11-23 |
+| ADR-008 | Secrets in `secrets.bin`, not SQLite | Keeps ciphertext separate from queryable data; no key material in DB backups/logs | 2026-11-23 |
+| ADR-009 | `SecretCipher` boundary with Electron adapter | Services stay unit-testable under Node; Electron isolation remains explicit | 2026-11-23 |
+| ADR-010 | Unenforced permissions are visible but locked | Avoids fake consent controls; `available` is the single source of truth | 2026-11-23 |
 | ADR-007 | Bundle preload into a single CJS file with Vite | Sandboxed preloads cannot `require` relative modules; unbundled preload failed with `module not found` | 2026-11-22 |
 | ADR-008 | Vite `base: './'` | Production assets must resolve from `file://` when Electron loads the built HTML | 2026-11-22 |
 | ADR-009 | Pin TypeScript 5.9.3 | Conservative compatibility with Vite 8 / Vitest 5 toolchain | 2026-11-22 |

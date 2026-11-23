@@ -2,6 +2,7 @@ import { app, BrowserWindow, dialog, ipcMain } from 'electron';
 import { IPC_CHANNELS } from '../../shared/ipc-channels';
 import type { AppInfo, QuitResult } from '../../shared/types';
 import { getAppInfo } from '../services/app-info.service';
+import { getCoreServices } from '../services/core-services';
 import { assertNoArguments, assertTrustedRenderer } from '../utils/ipc-guard';
 
 export function registerAppIpc(): void {
@@ -36,6 +37,18 @@ export function registerAppIpc(): void {
     const accepted = result.response === 1;
 
     if (accepted) {
+      try {
+        getCoreServices().activity.tryRecord({
+          category: 'app',
+          severity: 'info',
+          action: 'app.quit_confirmed',
+          outcome: 'success',
+          detail: 'Quit was confirmed by the user.',
+        });
+      } catch {
+        // Shutdown must not be blocked by a logging failure.
+      }
+
       setImmediate(() => {
         app.quit();
       });

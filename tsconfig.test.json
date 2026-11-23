@@ -10,7 +10,9 @@
   "include": [
     "tests/**/*.ts",
     "src/shared/**/*.ts",
-    "src/main/utils/ipc-guard.ts",
+    "src/main/utils/**/*.ts",
+    "src/main/services/**/*.ts",
     "src/renderer/navigation.ts"
-  ]
+  ],
+  "exclude": ["src/main/services/safe-storage-cipher.ts"]
 }
